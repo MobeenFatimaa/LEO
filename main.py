@@ -13,6 +13,12 @@ from tools.basic_tools import (
     calculate
 )
 
+from memory import (
+    remember_fact,
+    forget_fact,
+    get_memory
+)
+
 
 # ============================================================
 # CONFIGURATION
@@ -38,7 +44,7 @@ client = genai.Client(
 
 
 # ============================================================
-# LEO PERSONALITY
+# LEO PERSONALITY / SYSTEM INSTRUCTION
 # ============================================================
 
 SYSTEM_INSTRUCTION = """
@@ -54,7 +60,13 @@ Your responses will be spoken aloud, so avoid:
 - Markdown
 - Unnecessary lists
 
-You have access to tools.
+Keep normal responses short and conversational.
+
+------------------------------------------------------------
+WEB SEARCH
+------------------------------------------------------------
+
+You have access to Google Search.
 
 Use Google Search when the user asks for:
 - Current information
@@ -62,19 +74,67 @@ Use Google Search when the user asks for:
 - Recent events
 - Current prices
 - Recent technology developments
+- Recent people or company information
 - Information that may have changed recently
 - Real-time or up-to-date facts
 
-Use custom tools when appropriate.
+Do not use search unnecessarily for simple general questions.
+
+------------------------------------------------------------
+CUSTOM TOOLS
+------------------------------------------------------------
+
+You have access to custom Python tools.
+
+Use the appropriate tool when the user asks you to perform
+an action that a tool can handle.
 
 If a tool can perform an action, perform the action instead
 of simply explaining how the user could do it.
 
-When the user asks a normal general knowledge question,
-answer naturally.
+Never claim that an action was performed unless the tool was
+actually executed successfully.
 
-Never claim that you performed an action if the tool was not
-actually executed.
+------------------------------------------------------------
+PERSISTENT MEMORY
+------------------------------------------------------------
+
+You have access to persistent local memory.
+
+Only save information when the user explicitly asks you
+to remember, save, or keep something for later.
+
+Examples:
+
+"Remember that my favorite language is Python."
+
+"Leo, remember that my project is called LEO."
+
+When the user explicitly asks you to remember something,
+use the remember_fact tool.
+
+When the user explicitly asks you to forget something,
+use the forget_fact tool.
+
+When the user asks about information that may have been
+saved previously, use the get_memory tool.
+
+Do not invent memories.
+
+Do not claim to remember something unless it was actually
+saved.
+
+------------------------------------------------------------
+GENERAL BEHAVIOR
+------------------------------------------------------------
+
+Answer normal questions naturally.
+
+If the user asks something that does not require a tool,
+answer directly.
+
+You are a voice assistant, so prioritize short,
+clear, natural spoken responses.
 """
 
 
@@ -86,6 +146,9 @@ engine = pyttsx3.init()
 
 
 def speak(text):
+    """
+    Convert text into spoken audio.
+    """
 
     if not text:
         return
@@ -102,6 +165,9 @@ def speak(text):
 # ============================================================
 
 def listen():
+    """
+    Listen through the microphone and convert speech to text.
+    """
 
     recognizer = sr.Recognizer()
 
@@ -164,6 +230,9 @@ def listen():
 # ============================================================
 
 def wait_for_wake_word():
+    """
+    Wait until the user says 'Leo'.
+    """
 
     while True:
 
@@ -174,15 +243,26 @@ def wait_for_wake_word():
 
         if "leo" in command:
 
+            # Remove only the first occurrence
+            # of the wake word.
             command = command.replace(
                 "leo",
                 "",
                 1
             ).strip()
 
+            # Example:
+            # "Leo open YouTube"
+            #
+            # becomes:
+            # "open youtube"
+
             if command:
 
                 return command
+
+            # User only said:
+            # "Leo"
 
             speak("Yes?")
 
@@ -193,62 +273,240 @@ def wait_for_wake_word():
 # CUSTOM TOOL DEFINITIONS
 # ============================================================
 
+# ------------------------------------------------------------
+# OPEN WEBSITE
+# ------------------------------------------------------------
+
 open_website_tool = {
+
     "type": "function",
+
     "name": "open_website",
+
     "description": (
         "Open a supported website in the user's "
         "default web browser."
     ),
+
     "parameters": {
+
         "type": "object",
+
         "properties": {
+
             "website": {
+
                 "type": "string",
+
                 "description": (
-                    "Website name. Supported websites are "
-                    "google, youtube, linkedin, facebook, "
-                    "and github."
+                    "The website to open. "
+                    "Supported websites are "
+                    "google, youtube, linkedin, "
+                    "facebook, and github."
                 )
+
             }
+
         },
-        "required": ["website"]
+
+        "required": [
+            "website"
+        ]
     }
 }
 
 
+# ------------------------------------------------------------
+# GET TIME
+# ------------------------------------------------------------
+
 get_time_tool = {
+
     "type": "function",
+
     "name": "get_time",
+
     "description": (
         "Get the current local time."
     ),
+
     "parameters": {
+
         "type": "object",
+
         "properties": {},
+
         "required": []
     }
 }
 
 
+# ------------------------------------------------------------
+# CALCULATE
+# ------------------------------------------------------------
+
 calculate_tool = {
+
     "type": "function",
+
     "name": "calculate",
+
     "description": (
         "Calculate a basic mathematical expression."
     ),
+
     "parameters": {
+
         "type": "object",
+
         "properties": {
+
             "expression": {
+
                 "type": "string",
+
                 "description": (
                     "A mathematical expression such as "
-                    "25 * 4 or 100 / 5."
+                    "25 * 4, 100 / 5, or 10 + 20."
+                )
+
+            }
+
+        },
+
+        "required": [
+            "expression"
+        ]
+    }
+}
+
+
+# ------------------------------------------------------------
+# REMEMBER FACT
+# ------------------------------------------------------------
+
+remember_fact_tool = {
+
+    "type": "function",
+
+    "name": "remember_fact",
+
+    "description": (
+        "Save an important personal fact or preference "
+        "that the user explicitly asks LEO to remember."
+    ),
+
+    "parameters": {
+
+        "type": "object",
+
+        "properties": {
+
+            "key": {
+
+                "type": "string",
+
+                "description": (
+                    "The category of information, "
+                    "such as favorite language, "
+                    "favorite color, project name, "
+                    "or preferred editor."
+                )
+            },
+
+            "value": {
+
+                "type": "string",
+
+                "description": (
+                    "The information that should be remembered."
                 )
             }
+
         },
-        "required": ["expression"]
+
+        "required": [
+            "key",
+            "value"
+        ]
+    }
+}
+
+
+# ------------------------------------------------------------
+# FORGET FACT
+# ------------------------------------------------------------
+
+forget_fact_tool = {
+
+    "type": "function",
+
+    "name": "forget_fact",
+
+    "description": (
+        "Delete a previously saved personal fact "
+        "when the user asks LEO to forget it."
+    ),
+
+    "parameters": {
+
+        "type": "object",
+
+        "properties": {
+
+            "key": {
+
+                "type": "string",
+
+                "description": (
+                    "The category of information to forget."
+                )
+            }
+
+        },
+
+        "required": [
+            "key"
+        ]
+    }
+}
+
+
+# ------------------------------------------------------------
+# GET MEMORY
+# ------------------------------------------------------------
+
+get_memory_tool = {
+
+    "type": "function",
+
+    "name": "get_memory",
+
+    "description": (
+        "Retrieve a personal fact previously saved "
+        "in LEO's persistent local memory."
+    ),
+
+    "parameters": {
+
+        "type": "object",
+
+        "properties": {
+
+            "key": {
+
+                "type": "string",
+
+                "description": (
+                    "The category of memory to retrieve."
+                )
+            }
+
+        },
+
+        "required": [
+            "key"
+        ]
     }
 }
 
@@ -258,15 +516,25 @@ calculate_tool = {
 # ============================================================
 
 tools = [
+
+    # Built-in Gemini tool
     {
         "type": "google_search"
     },
 
+    # Custom Python tools
     open_website_tool,
 
     get_time_tool,
 
-    calculate_tool
+    calculate_tool,
+
+    # Persistent memory tools
+    remember_fact_tool,
+
+    forget_fact_tool,
+
+    get_memory_tool
 ]
 
 
@@ -275,6 +543,9 @@ tools = [
 # ============================================================
 
 def execute_tool(name, arguments):
+    """
+    Execute the Python function requested by Gemini.
+    """
 
     print(
         f"\n[TOOL] {name}"
@@ -285,6 +556,10 @@ def execute_tool(name, arguments):
     )
 
 
+    # --------------------------------------------------------
+    # OPEN WEBSITE
+    # --------------------------------------------------------
+
     if name == "open_website":
 
         return open_website(
@@ -292,10 +567,18 @@ def execute_tool(name, arguments):
         )
 
 
+    # --------------------------------------------------------
+    # GET TIME
+    # --------------------------------------------------------
+
     elif name == "get_time":
 
         return get_time()
 
+
+    # --------------------------------------------------------
+    # CALCULATE
+    # --------------------------------------------------------
 
     elif name == "calculate":
 
@@ -304,6 +587,56 @@ def execute_tool(name, arguments):
         )
 
 
+    # --------------------------------------------------------
+    # REMEMBER
+    # --------------------------------------------------------
+
+    elif name == "remember_fact":
+
+        return remember_fact(
+            arguments["key"],
+            arguments["value"]
+        )
+
+
+    # --------------------------------------------------------
+    # FORGET
+    # --------------------------------------------------------
+
+    elif name == "forget_fact":
+
+        return forget_fact(
+            arguments["key"]
+        )
+
+
+    # --------------------------------------------------------
+    # GET MEMORY
+    # --------------------------------------------------------
+
+    elif name == "get_memory":
+
+        value = get_memory(
+            arguments["key"]
+        )
+
+        if value is None:
+
+            return (
+                f"I don't have anything saved "
+                f"about {arguments['key']}."
+            )
+
+        return (
+            f"Your {arguments['key']} "
+            f"is {value}."
+        )
+
+
+    # --------------------------------------------------------
+    # UNKNOWN TOOL
+    # --------------------------------------------------------
+
     return "Unknown tool."
 
 
@@ -311,7 +644,23 @@ def execute_tool(name, arguments):
 # GEMINI AGENT
 # ============================================================
 
-def ask_ai(command, previous_interaction_id=None):
+def ask_ai(
+    command,
+    previous_interaction_id=None
+):
+    """
+    Send the user's command to Gemini.
+
+    Gemini can:
+    - Answer normally
+    - Search the web
+    - Call our Python tools
+    - Use persistent memory
+    """
+
+    # --------------------------------------------------------
+    # FIRST GEMINI REQUEST
+    # --------------------------------------------------------
 
     interaction = client.interactions.create(
 
@@ -319,18 +668,29 @@ def ask_ai(command, previous_interaction_id=None):
 
         input=command,
 
-        previous_interaction_id=previous_interaction_id,
+        previous_interaction_id=(
+            previous_interaction_id
+        ),
 
-        system_instruction=SYSTEM_INSTRUCTION,
+        system_instruction=(
+            SYSTEM_INSTRUCTION
+        ),
 
         tools=tools
     )
 
 
+    # --------------------------------------------------------
+    # TOOL LOOP
+    # --------------------------------------------------------
+
     while True:
 
         function_calls = []
 
+
+        # Find all custom function calls
+        # requested by Gemini.
 
         for step in interaction.steps:
 
@@ -339,6 +699,10 @@ def ask_ai(command, previous_interaction_id=None):
                 function_calls.append(step)
 
 
+        # ----------------------------------------------------
+        # NO CUSTOM FUNCTION CALL
+        # ----------------------------------------------------
+
         if not function_calls:
 
             return (
@@ -346,6 +710,10 @@ def ask_ai(command, previous_interaction_id=None):
                 interaction.id
             )
 
+
+        # ----------------------------------------------------
+        # EXECUTE FUNCTION CALLS
+        # ----------------------------------------------------
 
         function_results = []
 
@@ -356,12 +724,21 @@ def ask_ai(command, previous_interaction_id=None):
 
                 arguments = step.arguments
 
-                if isinstance(arguments, str):
+
+                # Sometimes arguments can arrive
+                # as a JSON string.
+
+                if isinstance(
+                    arguments,
+                    str
+                ):
 
                     arguments = json.loads(
                         arguments
                     )
 
+
+                # Execute the requested Python tool.
 
                 result = execute_tool(
                     step.name,
@@ -369,6 +746,13 @@ def ask_ai(command, previous_interaction_id=None):
                 )
 
 
+                print(
+                    f"[RESULT] {result}"
+                )
+
+
+                # Prepare result for Gemini.
+
                 function_results.append({
 
                     "type": "function_result",
@@ -378,24 +762,27 @@ def ask_ai(command, previous_interaction_id=None):
                     "call_id": step.id,
 
                     "result": [
+
                         {
                             "type": "text",
+
                             "text": json.dumps(
                                 {
                                     "result": result
                                 }
                             )
                         }
+
                     ]
 
                 })
 
 
-            except Exception as e:
+            except Exception as error:
 
                 print(
-                    "[TOOL ERROR]",
-                    e
+                    "\n[TOOL ERROR]",
+                    repr(error)
                 )
 
 
@@ -408,26 +795,37 @@ def ask_ai(command, previous_interaction_id=None):
                     "call_id": step.id,
 
                     "result": [
+
                         {
                             "type": "text",
+
                             "text": json.dumps(
                                 {
-                                    "error": str(e)
+                                    "error": str(error)
                                 }
                             )
                         }
+
                     ]
 
                 })
 
 
+        # ----------------------------------------------------
+        # SEND TOOL RESULTS BACK TO GEMINI
+        # ----------------------------------------------------
+
         interaction = client.interactions.create(
 
             model="gemini-3.8-flash",
 
-            previous_interaction_id=interaction.id,
+            previous_interaction_id=(
+                interaction.id
+            ),
 
-            system_instruction=SYSTEM_INSTRUCTION,
+            system_instruction=(
+                SYSTEM_INSTRUCTION
+            ),
 
             tools=tools,
 
@@ -441,26 +839,36 @@ def ask_ai(command, previous_interaction_id=None):
 
 def main():
 
+    # --------------------------------------------------------
+    # STARTUP
+    # --------------------------------------------------------
+
     speak(
         "Hello. I am Leo. "
         "I am ready."
     )
 
 
+    # This keeps the current Gemini conversation alive.
+
     previous_interaction_id = None
 
+
+    # --------------------------------------------------------
+    # MAIN LOOP
+    # --------------------------------------------------------
 
     while True:
 
         # ----------------------------------------------------
-        # WAIT FOR "LEO"
+        # WAIT FOR LEO
         # ----------------------------------------------------
 
         command = wait_for_wake_word()
 
 
         # ----------------------------------------------------
-        # IF USER ONLY SAID "LEO"
+        # USER ONLY SAID "LEO"
         # ----------------------------------------------------
 
         if not command:
@@ -474,7 +882,7 @@ def main():
 
 
         # ----------------------------------------------------
-        # EXIT
+        # EXIT COMMANDS
         # ----------------------------------------------------
 
         if (
@@ -492,16 +900,23 @@ def main():
 
 
         # ----------------------------------------------------
-        # SEND TO GEMINI
+        # SEND COMMAND TO GEMINI
         # ----------------------------------------------------
 
         try:
 
             answer, previous_interaction_id = ask_ai(
+
                 command,
+
                 previous_interaction_id
+
             )
 
+
+            # ------------------------------------------------
+            # SPEAK RESPONSE
+            # ------------------------------------------------
 
             if answer:
 
@@ -514,12 +929,24 @@ def main():
                 )
 
 
-        except Exception as e:
+        except Exception as error:
 
             print(
-                "\n[ERROR]",
-                repr(e)
+                "\n================================"
             )
+
+            print(
+                "LEO ERROR:"
+            )
+
+            print(
+                repr(error)
+            )
+
+            print(
+                "================================"
+            )
+
 
             speak(
                 "Sorry, something went wrong."
