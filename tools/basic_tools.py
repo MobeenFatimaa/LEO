@@ -1,6 +1,6 @@
 import webbrowser
+import subprocess
 import requests
-
 from datetime import datetime
 
 
@@ -9,31 +9,130 @@ from datetime import datetime
 # ============================================================
 
 def open_website(website):
-    """
-    Open a supported website in the default browser.
-    """
-
     websites = {
         "google": "https://www.google.com",
         "youtube": "https://www.youtube.com",
         "linkedin": "https://www.linkedin.com",
         "facebook": "https://www.facebook.com",
-        "github": "https://github.com"
+        "github": "https://github.com",
+        "gmail": "https://mail.google.com",
+        "kaggle": "https://www.kaggle.com",
+        "chatgpt": "https://chatgpt.com",
+        "gemini": "https://gemini.google.com"
     }
 
     website = website.lower().strip()
 
-    if website in websites:
-
-        webbrowser.open(
-            websites[website]
+    if website not in websites:
+        return (
+            f"I don't have a supported shortcut for {website}. "
+            "Supported websites include Google, YouTube, LinkedIn, "
+            "Facebook, GitHub, Gmail, Kaggle, ChatGPT, and Gemini."
         )
 
-        return f"Opened {website}."
+    webbrowser.open(websites[website])
 
-    return (
-        f"I don't know the website {website}."
-    )
+    return f"Opening {website}."
+
+
+# ============================================================
+# APPLICATION TOOL
+# ============================================================
+
+def open_application(application):
+    application = application.lower().strip()
+
+    applications = {
+        "chrome": "chrome",
+        "google chrome": "chrome",
+
+        "notepad": "notepad",
+
+        "calculator": "calc",
+        "calc": "calc",
+
+        "paint": "mspaint",
+
+        "command prompt": "cmd",
+        "cmd": "cmd",
+
+        "powershell": "powershell",
+
+        "file explorer": "explorer",
+        "explorer": "explorer",
+
+        "task manager": "taskmgr"
+    }
+
+    if application not in applications:
+        return (
+            f"I don't have a configured launcher for {application}. "
+            "Supported applications include Chrome, Notepad, "
+            "Calculator, Paint, Command Prompt, PowerShell, "
+            "File Explorer, and Task Manager."
+        )
+
+    try:
+        subprocess.Popen(
+            applications[application],
+            shell=True
+        )
+
+        return f"Opening {application}."
+
+    except Exception as e:
+        return f"I couldn't open {application}. Error: {str(e)}"
+
+
+# ============================================================
+# VS CODE TOOL
+# ============================================================
+
+def open_vscode():
+    try:
+        subprocess.Popen(
+            "code",
+            shell=True
+        )
+
+        return "Opening Visual Studio Code."
+
+    except Exception as e:
+        return f"I couldn't open Visual Studio Code. Error: {str(e)}"
+
+
+# ============================================================
+# FOLDER TOOL
+# ============================================================
+
+def open_folder(folder):
+    folder = folder.lower().strip()
+
+    folders = {
+        "desktop": r"C:\Users\User\Desktop",
+        "documents": r"C:\Users\User\Documents",
+        "downloads": r"C:\Users\User\Downloads",
+        "pictures": r"C:\Users\User\Pictures",
+        "videos": r"C:\Users\User\Videos",
+        "music": r"C:\Users\User\Music"
+    }
+
+    if folder not in folders:
+        return (
+            f"I don't have a configured path for {folder}. "
+            "You can ask me to open Desktop, Documents, "
+            "Downloads, Pictures, Videos, or Music."
+        )
+
+    try:
+        subprocess.Popen(
+            ["explorer", folders[folder]]
+        )
+
+        return f"Opening your {folder} folder."
+
+    except Exception as e:
+        return f"I couldn't open the {folder} folder. Error: {str(e)}"
 
 
 # ============================================================
@@ -41,16 +140,10 @@ def open_website(website):
 # ============================================================
 
 def get_time():
-    """
-    Return the current local time.
-    """
+    now = datetime.now()
 
-    current_time = datetime.now().strftime(
-        "%I:%M %p"
-    )
-
-    return (
-        f"The current time is {current_time}."
+    return now.strftime(
+        "The current time is %I:%M %p."
     )
 
 
@@ -59,16 +152,10 @@ def get_time():
 # ============================================================
 
 def get_date():
-    """
-    Return the current local date.
-    """
+    now = datetime.now()
 
-    current_date = datetime.now().strftime(
-        "%A, %B %d, %Y"
-    )
-
-    return (
-        f"Today is {current_date}."
+    return now.strftime(
+        "Today is %A, %B %d, %Y."
     )
 
 
@@ -77,99 +164,82 @@ def get_date():
 # ============================================================
 
 def calculate(expression):
-    """
-    Calculate a basic mathematical expression.
-    """
-
     try:
+        allowed_characters = (
+            "0123456789"
+            "+-*/().% "
+        )
+
+        if not all(
+            character in allowed_characters
+            for character in expression
+        ):
+            return "I can only calculate basic mathematical expressions."
 
         result = eval(
             expression,
-            {"__builtins__": {}},
+            {
+                "__builtins__": {}
+            },
             {}
         )
 
         return f"The answer is {result}."
 
     except Exception:
-
-        return (
-            "I couldn't calculate that."
-        )
+        return "I couldn't calculate that expression."
 
 
 # ============================================================
-# WEATHER CODE DESCRIPTION
+# WEATHER DESCRIPTION
 # ============================================================
 
 def weather_description(code):
-    """
-    Convert Open-Meteo weather codes into
-    human-readable descriptions.
-    """
-
     descriptions = {
+        0: "Clear sky",
 
-        0: "clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
 
-        1: "mainly clear",
+        45: "Fog",
+        48: "Depositing rime fog",
 
-        2: "partly cloudy",
+        51: "Light drizzle",
+        53: "Moderate drizzle",
+        55: "Dense drizzle",
 
-        3: "overcast",
+        56: "Light freezing drizzle",
+        57: "Dense freezing drizzle",
 
-        45: "fog",
+        61: "Slight rain",
+        63: "Moderate rain",
+        65: "Heavy rain",
 
-        48: "depositing rime fog",
+        66: "Light freezing rain",
+        67: "Heavy freezing rain",
 
-        51: "light drizzle",
+        71: "Slight snow",
+        73: "Moderate snow",
+        75: "Heavy snow",
 
-        53: "moderate drizzle",
+        77: "Snow grains",
 
-        55: "dense drizzle",
+        80: "Slight rain showers",
+        81: "Moderate rain showers",
+        82: "Violent rain showers",
 
-        56: "light freezing drizzle",
+        85: "Slight snow showers",
+        86: "Heavy snow showers",
 
-        57: "dense freezing drizzle",
-
-        61: "slight rain",
-
-        63: "moderate rain",
-
-        65: "heavy rain",
-
-        66: "light freezing rain",
-
-        67: "heavy freezing rain",
-
-        71: "slight snow",
-
-        73: "moderate snow",
-
-        75: "heavy snow",
-
-        77: "snow grains",
-
-        80: "slight rain showers",
-
-        81: "moderate rain showers",
-
-        82: "violent rain showers",
-
-        85: "slight snow showers",
-
-        86: "heavy snow showers",
-
-        95: "thunderstorm",
-
-        96: "thunderstorm with slight hail",
-
-        99: "thunderstorm with heavy hail"
+        95: "Thunderstorm",
+        96: "Thunderstorm with slight hail",
+        99: "Thunderstorm with heavy hail"
     }
 
     return descriptions.get(
         code,
-        "unknown weather conditions"
+        "Unknown weather conditions"
     )
 
 
@@ -178,73 +248,49 @@ def weather_description(code):
 # ============================================================
 
 def get_weather(location):
-    """
-    Get current weather for a city using Open-Meteo.
-
-    No API key is required for normal non-commercial use.
-    """
 
     try:
 
         # ----------------------------------------------------
-        # STEP 1: FIND CITY COORDINATES
+        # STEP 1: FIND LOCATION
         # ----------------------------------------------------
 
-        geocoding_url = (
+        geocode_url = (
             "https://geocoding-api.open-meteo.com/v1/search"
         )
 
-        geocoding_params = {
-
+        geocode_params = {
             "name": location,
-
             "count": 1,
-
             "language": "en",
-
             "format": "json"
         }
 
-        geocoding_response = requests.get(
-            geocoding_url,
-            params=geocoding_params,
+        geocode_response = requests.get(
+            geocode_url,
+            params=geocode_params,
             timeout=10
         )
 
-        geocoding_response.raise_for_status()
+        geocode_response.raise_for_status()
 
-        geocoding_data = (
-            geocoding_response.json()
-        )
+        geocode_data = geocode_response.json()
 
-        results = geocoding_data.get(
-            "results"
-        )
+        if not geocode_data.get("results"):
+            return f"I couldn't find the location {location}."
 
-        if not results:
-
-            return (
-                f"I couldn't find the location "
-                f"{location}."
-            )
-
-
-        place = results[0]
+        place = geocode_data["results"][0]
 
         latitude = place["latitude"]
-
         longitude = place["longitude"]
-
-        city_name = place.get(
+        place_name = place.get(
             "name",
             location
         )
-
         country = place.get(
             "country",
             ""
         )
-
 
         # ----------------------------------------------------
         # STEP 2: GET WEATHER
@@ -255,9 +301,7 @@ def get_weather(location):
         )
 
         weather_params = {
-
             "latitude": latitude,
-
             "longitude": longitude,
 
             "current": (
@@ -270,9 +314,7 @@ def get_weather(location):
             ),
 
             "temperature_unit": "celsius",
-
             "wind_speed_unit": "kmh",
-
             "timezone": "auto"
         }
 
@@ -284,96 +326,37 @@ def get_weather(location):
 
         weather_response.raise_for_status()
 
-        weather_data = (
-            weather_response.json()
-        )
+        weather_data = weather_response.json()
 
+        current = weather_data["current"]
 
-        current = weather_data.get(
-            "current"
-        )
-
-        if not current:
-
-            return (
-                "I couldn't retrieve the "
-                "current weather."
-            )
-
-
-        # ----------------------------------------------------
-        # STEP 3: EXTRACT DATA
-        # ----------------------------------------------------
-
-        temperature = current.get(
-            "temperature_2m"
-        )
-
-        humidity = current.get(
-            "relative_humidity_2m"
-        )
-
-        feels_like = current.get(
-            "apparent_temperature"
-        )
-
-        precipitation = current.get(
-            "precipitation"
-        )
-
-        weather_code = current.get(
-            "weather_code"
-        )
-
-        wind_speed = current.get(
-            "wind_speed_10m"
-        )
-
+        temperature = current["temperature_2m"]
+        humidity = current["relative_humidity_2m"]
+        feels_like = current["apparent_temperature"]
+        precipitation = current["precipitation"]
+        weather_code = current["weather_code"]
+        wind_speed = current["wind_speed_10m"]
 
         description = weather_description(
             weather_code
         )
 
-
-        # ----------------------------------------------------
-        # STEP 4: RETURN NATURAL RESULT
-        # ----------------------------------------------------
-
         return (
-            f"The current weather in "
-            f"{city_name}, {country} is "
+            f"Current weather in {place_name}, {country}: "
             f"{description}. "
-            f"The temperature is "
-            f"{temperature} degrees Celsius, "
+            f"Temperature is {temperature} degrees Celsius, "
             f"feels like {feels_like} degrees, "
             f"humidity is {humidity} percent, "
-            f"wind speed is {wind_speed} "
-            f"kilometers per hour, and "
-            f"precipitation is {precipitation} millimeters."
+            f"wind speed is {wind_speed} kilometers per hour, "
+            f"and precipitation is {precipitation} millimeters."
         )
 
-
-    except requests.RequestException as error:
-
-        print(
-            "[WEATHER ERROR]",
-            error
-        )
-
+    except requests.RequestException:
         return (
-            "I couldn't connect to the "
-            "weather service right now."
+            "I couldn't connect to the weather service."
         )
 
-
-    except Exception as error:
-
-        print(
-            "[WEATHER ERROR]",
-            error
-        )
-
+    except Exception as e:
         return (
-            "Something went wrong while "
-            "getting the weather."
+            f"I couldn't get the weather. Error: {str(e)}"
         )
