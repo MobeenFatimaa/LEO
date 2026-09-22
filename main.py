@@ -9,6 +9,9 @@ from google import genai
 
 from tools.basic_tools import (
     open_website,
+    open_application,
+    open_vscode,
+    open_folder,
     get_time,
     get_date,
     calculate,
@@ -33,7 +36,6 @@ GEMINI_API_KEY = os.getenv(
 )
 
 if not GEMINI_API_KEY:
-
     raise ValueError(
         "GEMINI_API_KEY was not found in your .env file."
     )
@@ -59,145 +61,90 @@ Your name is LEO.
 
 You are helpful, concise, friendly, and natural.
 
-Your responses will be spoken aloud.
-
-Keep responses short and conversational.
-
-Avoid:
-- Markdown
+Your responses will be spoken aloud, so avoid:
 - Long explanations
-- Excessive lists
-- Unnecessary formatting
+- Excessive formatting
+- Markdown
+- Unnecessary lists
 
+IMPORTANT TOOL RULES:
 
-============================================================
-GOOGLE SEARCH
-============================================================
-
-You have access to Google Search.
-
-Use Google Search when the user asks for:
-
-- Latest news
-- Current events
-- Recent developments
+1. Use Google Search when the user asks for:
 - Current information
+- Latest news
+- Recent events
 - Current prices
-- Recent technology news
-- Recent company information
+- Recent technology developments
 - Information that may have changed recently
+- Up-to-date facts
 
-For example:
-
-"Leo, what is the latest AI news?"
-
-"Leo, what happened in technology today?"
-
-"Leo, what are the latest developments in Gemini?"
-
-Do not use search unnecessarily for simple general questions.
-
-
-============================================================
-WEATHER
-============================================================
-
-You have a weather tool.
-
-Use the weather tool when the user asks about:
-
-- Current weather
+2. Use the weather tool when the user asks about:
+- Weather
 - Temperature
-- Humidity
 - Rain
+- Humidity
 - Wind
-- Weather conditions
-- How the weather feels
+- Current conditions
+for a location.
 
-If the user specifies a city, use that city.
+3. Use the date tool when the user asks:
+- What is today's date?
+- What day is it?
+- Today's date
 
-For example:
+4. Use the time tool when the user asks:
+- What time is it?
+- Current time
 
-"What's the weather in Rawalpindi?"
+5. Use the website tool when the user asks you to:
+- Open Google
+- Open YouTube
+- Open GitHub
+- Open LinkedIn
+- Open Gmail
+- Open Kaggle
+- Open ChatGPT
+- Open Gemini
+or another supported website.
 
-"What's the temperature in London?"
+6. Use the application tool when the user asks you to:
+- Open Chrome
+- Open Notepad
+- Open Calculator
+- Open Paint
+- Open Command Prompt
+- Open PowerShell
+- Open File Explorer
+- Open Task Manager
 
-"How is the weather in Dubai?"
+7. Use the VS Code tool when the user asks:
+- Open VS Code
+- Open Visual Studio Code
 
-Do not guess weather information.
+8. Use the folder tool when the user asks:
+- Open Desktop
+- Open Downloads
+- Open Documents
+- Open Pictures
+- Open Videos
+- Open Music
 
+9. Use the calculator tool for mathematical calculations.
 
-============================================================
-DATE AND TIME
-============================================================
+10. Use memory tools when the user explicitly asks you to:
+- Remember something
+- Forget something
+- Tell them something stored in memory
 
-Use the time tool when the user asks for the current time.
+If a tool can perform an action, perform the action instead
+of simply explaining how the user could do it.
 
-Use the date tool when the user asks for today's date.
-
-
-============================================================
-WEBSITES
-============================================================
-
-Use the website tool when the user asks you to open:
-
-- Google
-- YouTube
-- LinkedIn
-- Facebook
-- GitHub
-
-
-============================================================
-CALCULATOR
-============================================================
-
-Use the calculator when the user asks for mathematical
-calculations.
-
-
-============================================================
-PERSISTENT MEMORY
-============================================================
-
-You have persistent local memory.
-
-Only save information when the user explicitly asks you
-to remember or save it.
-
-When the user says:
-
-"Remember that..."
-
-use the remember_fact tool.
-
-When the user asks you to forget something,
-use the forget_fact tool.
-
-When the user asks about information that may have been
-saved previously, use the get_memory tool.
-
-Never invent memories.
-
-Never claim that something was saved unless the memory
-tool actually executed successfully.
-
-
-============================================================
-GENERAL BEHAVIOR
-============================================================
-
-If a tool can perform an action, use the tool.
-
-Never claim an action was completed if the tool was not
+Never claim that you performed an action if the tool was not
 actually executed.
 
-For normal questions that don't require a tool,
-answer directly.
+If a tool returns an error, explain the error briefly.
 
-You are a voice assistant, so keep spoken responses natural
-and reasonably short.
+You are a voice assistant, so keep answers reasonably short.
 """
 
 
@@ -213,10 +160,7 @@ def speak(text):
     if not text:
         return
 
-    print(
-        "LEO:",
-        text
-    )
+    print("LEO:", text)
 
     engine.say(text)
 
@@ -233,9 +177,7 @@ def listen():
 
     with sr.Microphone() as source:
 
-        print(
-            "\nListening..."
-        )
+        print("\nListening...")
 
         recognizer.adjust_for_ambient_noise(
             source,
@@ -252,12 +194,9 @@ def listen():
 
         except sr.WaitTimeoutError:
 
-            print(
-                "No speech detected."
-            )
+            print("No speech detected.")
 
             return ""
-
 
     try:
 
@@ -265,13 +204,9 @@ def listen():
             audio
         )
 
-        print(
-            "You:",
-            text
-        )
+        print("You:", text)
 
         return text.lower()
-
 
     except sr.UnknownValueError:
 
@@ -280,7 +215,6 @@ def listen():
         )
 
         return ""
-
 
     except sr.RequestError:
 
@@ -307,7 +241,6 @@ def wait_for_wake_word():
         command = listen()
 
         if not command:
-
             continue
 
         if "leo" in command:
@@ -322,46 +255,34 @@ def wait_for_wake_word():
 
                 return command
 
-            speak(
-                "Yes?"
-            )
+            speak("Yes?")
 
             return ""
 
 
 # ============================================================
-# WEBSITE TOOL DEFINITION
+# TOOL DEFINITIONS
 # ============================================================
 
 open_website_tool = {
-
     "type": "function",
-
     "name": "open_website",
-
     "description": (
         "Open a supported website in the user's "
         "default web browser."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "website": {
-
                 "type": "string",
-
                 "description": (
-                    "Website name. Supported websites "
-                    "are google, youtube, linkedin, "
-                    "facebook, and github."
+                    "Website name. Supported websites include "
+                    "google, youtube, linkedin, facebook, "
+                    "github, gmail, kaggle, chatgpt, and gemini."
                 )
             }
         },
-
         "required": [
             "website"
         ]
@@ -369,87 +290,115 @@ open_website_tool = {
 }
 
 
-# ============================================================
-# TIME TOOL DEFINITION
-# ============================================================
+open_application_tool = {
+    "type": "function",
+    "name": "open_application",
+    "description": (
+        "Open a supported Windows application."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "application": {
+                "type": "string",
+                "description": (
+                    "Application name such as Chrome, "
+                    "Notepad, Calculator, Paint, "
+                    "Command Prompt, PowerShell, "
+                    "File Explorer, or Task Manager."
+                )
+            }
+        },
+        "required": [
+            "application"
+        ]
+    }
+}
+
+
+open_vscode_tool = {
+    "type": "function",
+    "name": "open_vscode",
+    "description": (
+        "Open Visual Studio Code on the Windows computer."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+}
+
+
+open_folder_tool = {
+    "type": "function",
+    "name": "open_folder",
+    "description": (
+        "Open a common Windows folder."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "folder": {
+                "type": "string",
+                "description": (
+                    "Folder name such as Desktop, Documents, "
+                    "Downloads, Pictures, Videos, or Music."
+                )
+            }
+        },
+        "required": [
+            "folder"
+        ]
+    }
+}
+
 
 get_time_tool = {
-
     "type": "function",
-
     "name": "get_time",
-
     "description": (
         "Get the current local time."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {},
-
         "required": []
     }
 }
 
-
-# ============================================================
-# DATE TOOL DEFINITION
-# ============================================================
 
 get_date_tool = {
-
     "type": "function",
-
     "name": "get_date",
-
     "description": (
-        "Get the current local date."
+        "Get today's date."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {},
-
         "required": []
     }
 }
 
 
-# ============================================================
-# CALCULATOR TOOL DEFINITION
-# ============================================================
-
 calculate_tool = {
-
     "type": "function",
-
     "name": "calculate",
-
     "description": (
         "Calculate a basic mathematical expression."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "expression": {
-
                 "type": "string",
-
                 "description": (
                     "Mathematical expression such as "
                     "25 * 4 or 100 / 5."
                 )
             }
         },
-
         "required": [
             "expression"
         ]
@@ -457,38 +406,25 @@ calculate_tool = {
 }
 
 
-# ============================================================
-# WEATHER TOOL DEFINITION
-# ============================================================
-
 weather_tool = {
-
     "type": "function",
-
     "name": "get_weather",
-
     "description": (
-        "Get the current weather for a specified city "
+        "Get current weather information for a city "
         "or location."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "location": {
-
                 "type": "string",
-
                 "description": (
-                    "The city or location for which "
-                    "the user wants current weather."
+                    "City or location name such as "
+                    "Rawalpindi, Islamabad, Lahore, "
+                    "Karachi, or London."
                 )
             }
         },
-
         "required": [
             "location"
         ]
@@ -496,46 +432,29 @@ weather_tool = {
 }
 
 
-# ============================================================
-# MEMORY TOOL DEFINITIONS
-# ============================================================
-
 remember_fact_tool = {
-
     "type": "function",
-
     "name": "remember_fact",
-
     "description": (
         "Save an important personal fact or preference "
         "that the user explicitly asks LEO to remember."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "key": {
-
                 "type": "string",
-
                 "description": (
                     "Category of information."
                 )
             },
-
             "value": {
-
                 "type": "string",
-
                 "description": (
                     "Information that should be remembered."
                 )
             }
         },
-
         "required": [
             "key",
             "value"
@@ -545,31 +464,22 @@ remember_fact_tool = {
 
 
 forget_fact_tool = {
-
     "type": "function",
-
     "name": "forget_fact",
-
     "description": (
-        "Delete a previously saved personal fact."
+        "Delete a previously saved personal fact "
+        "when the user asks LEO to forget it."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "key": {
-
                 "type": "string",
-
                 "description": (
                     "Category of information to forget."
                 )
             }
         },
-
         "required": [
             "key"
         ]
@@ -578,32 +488,22 @@ forget_fact_tool = {
 
 
 get_memory_tool = {
-
     "type": "function",
-
     "name": "get_memory",
-
     "description": (
         "Retrieve a personal fact previously saved "
         "in LEO's persistent memory."
     ),
-
     "parameters": {
-
         "type": "object",
-
         "properties": {
-
             "key": {
-
                 "type": "string",
-
                 "description": (
                     "Category of memory to retrieve."
                 )
             }
         },
-
         "required": [
             "key"
         ]
@@ -612,32 +512,31 @@ get_memory_tool = {
 
 
 # ============================================================
-# ALL LEO TOOLS
+# ALL TOOLS
 # ============================================================
 
 tools = [
 
-    # Built-in Gemini Search
     {
         "type": "google_search"
     },
 
-    # Browser
     open_website_tool,
 
-    # Time
+    open_application_tool,
+
+    open_vscode_tool,
+
+    open_folder_tool,
+
     get_time_tool,
 
-    # Date
     get_date_tool,
 
-    # Calculator
     calculate_tool,
 
-    # Weather
     weather_tool,
 
-    # Memory
     remember_fact_tool,
 
     forget_fact_tool,
@@ -650,23 +549,10 @@ tools = [
 # TOOL EXECUTION
 # ============================================================
 
-def execute_tool(
-    name,
-    arguments
-):
+def execute_tool(name, arguments):
 
-    print(
-        f"\n[TOOL] {name}"
-    )
-
-    print(
-        f"[ARGS] {arguments}"
-    )
-
-
-    # --------------------------------------------------------
-    # WEBSITE
-    # --------------------------------------------------------
+    print(f"\n[TOOL] {name}")
+    print(f"[ARGS] {arguments}")
 
     if name == "open_website":
 
@@ -674,28 +560,29 @@ def execute_tool(
             arguments["website"]
         )
 
+    elif name == "open_application":
 
-    # --------------------------------------------------------
-    # TIME
-    # --------------------------------------------------------
+        return open_application(
+            arguments["application"]
+        )
+
+    elif name == "open_vscode":
+
+        return open_vscode()
+
+    elif name == "open_folder":
+
+        return open_folder(
+            arguments["folder"]
+        )
 
     elif name == "get_time":
 
         return get_time()
 
-
-    # --------------------------------------------------------
-    # DATE
-    # --------------------------------------------------------
-
     elif name == "get_date":
 
         return get_date()
-
-
-    # --------------------------------------------------------
-    # CALCULATOR
-    # --------------------------------------------------------
 
     elif name == "calculate":
 
@@ -703,21 +590,11 @@ def execute_tool(
             arguments["expression"]
         )
 
-
-    # --------------------------------------------------------
-    # WEATHER
-    # --------------------------------------------------------
-
     elif name == "get_weather":
 
         return get_weather(
             arguments["location"]
         )
-
-
-    # --------------------------------------------------------
-    # REMEMBER
-    # --------------------------------------------------------
 
     elif name == "remember_fact":
 
@@ -726,56 +603,29 @@ def execute_tool(
             arguments["value"]
         )
 
-
-    # --------------------------------------------------------
-    # FORGET
-    # --------------------------------------------------------
-
     elif name == "forget_fact":
 
         return forget_fact(
             arguments["key"]
         )
 
-
-    # --------------------------------------------------------
-    # GET MEMORY
-    # --------------------------------------------------------
-
     elif name == "get_memory":
 
-        value = get_memory(
+        return get_memory(
             arguments["key"]
         )
-
-        if value is None:
-
-            return (
-                f"I don't have anything saved "
-                f"about {arguments['key']}."
-            )
-
-        return (
-            f"Your {arguments['key']} "
-            f"is {value}."
-        )
-
 
     return "Unknown tool."
 
 
 # ============================================================
-# GEMINI AGENT
+# GEMINI REQUEST
 # ============================================================
 
 def ask_ai(
     command,
     previous_interaction_id=None
 ):
-
-    # --------------------------------------------------------
-    # CREATE INTERACTION
-    # --------------------------------------------------------
 
     interaction = client.interactions.create(
 
@@ -796,25 +646,22 @@ def ask_ai(
 
 
     # --------------------------------------------------------
-    # TOOL LOOP
+    # TOOL EXECUTION LOOP
     # --------------------------------------------------------
 
     while True:
 
         function_calls = []
 
-
         for step in interaction.steps:
 
             if step.type == "function_call":
 
-                function_calls.append(
-                    step
-                )
+                function_calls.append(step)
 
 
         # ----------------------------------------------------
-        # NORMAL GEMINI RESPONSE
+        # NO TOOL CALL
         # ----------------------------------------------------
 
         if not function_calls:
@@ -838,7 +685,6 @@ def ask_ai(
 
                 arguments = step.arguments
 
-
                 if isinstance(
                     arguments,
                     str
@@ -852,12 +698,6 @@ def ask_ai(
                 result = execute_tool(
                     step.name,
                     arguments
-                )
-
-
-                print(
-                    "[RESULT]",
-                    result
                 )
 
 
@@ -886,11 +726,11 @@ def ask_ai(
                 })
 
 
-            except Exception as error:
+            except Exception as e:
 
                 print(
                     "[TOOL ERROR]",
-                    repr(error)
+                    e
                 )
 
 
@@ -909,7 +749,7 @@ def ask_ai(
 
                             "text": json.dumps(
                                 {
-                                    "error": str(error)
+                                    "error": str(e)
                                 }
                             )
                         }
@@ -920,7 +760,7 @@ def ask_ai(
 
 
         # ----------------------------------------------------
-        # SEND RESULTS BACK TO GEMINI
+        # SEND TOOL RESULTS BACK TO GEMINI
         # ----------------------------------------------------
 
         interaction = client.interactions.create(
@@ -942,7 +782,7 @@ def ask_ai(
 
 
 # ============================================================
-# MAIN PROGRAM
+# MAIN LOOP
 # ============================================================
 
 def main():
@@ -958,16 +798,8 @@ def main():
 
     while True:
 
-        # ----------------------------------------------------
-        # WAIT FOR WAKE WORD
-        # ----------------------------------------------------
-
         command = wait_for_wake_word()
 
-
-        # ----------------------------------------------------
-        # USER ONLY SAID LEO
-        # ----------------------------------------------------
 
         if not command:
 
@@ -980,7 +812,7 @@ def main():
 
 
         # ----------------------------------------------------
-        # EXIT
+        # EXIT COMMANDS
         # ----------------------------------------------------
 
         if (
@@ -998,7 +830,7 @@ def main():
 
 
         # ----------------------------------------------------
-        # GEMINI
+        # ASK GEMINI
         # ----------------------------------------------------
 
         try:
@@ -1014,9 +846,7 @@ def main():
 
             if answer:
 
-                speak(
-                    answer
-                )
+                speak(answer)
 
             else:
 
@@ -1025,24 +855,12 @@ def main():
                 )
 
 
-        except Exception as error:
+        except Exception as e:
 
             print(
-                "\n================================"
+                "\n[ERROR]",
+                repr(e)
             )
-
-            print(
-                "LEO ERROR:"
-            )
-
-            print(
-                repr(error)
-            )
-
-            print(
-                "================================"
-            )
-
 
             speak(
                 "Sorry, something went wrong."
