@@ -8,20 +8,29 @@ from datetime import datetime
 
 
 # ============================================================
-# WEBSITE TOOL
+# WEBSITE
 # ============================================================
 
 def open_website(website):
 
     websites = {
+
         "google": "https://www.google.com",
+
         "youtube": "https://www.youtube.com",
+
         "linkedin": "https://www.linkedin.com",
+
         "facebook": "https://www.facebook.com",
+
         "github": "https://github.com",
+
         "gmail": "https://mail.google.com",
+
         "kaggle": "https://www.kaggle.com",
+
         "chatgpt": "https://chatgpt.com",
+
         "gemini": "https://gemini.google.com"
     }
 
@@ -30,9 +39,8 @@ def open_website(website):
     if website not in websites:
 
         return (
-            f"I don't have a supported shortcut for {website}. "
-            "Supported websites include Google, YouTube, LinkedIn, "
-            "Facebook, GitHub, Gmail, Kaggle, ChatGPT, and Gemini."
+            f"I don't have a supported shortcut "
+            f"for {website}."
         )
 
     webbrowser.open(
@@ -43,7 +51,7 @@ def open_website(website):
 
 
 # ============================================================
-# APPLICATION TOOL
+# APPLICATION
 # ============================================================
 
 def open_application(application):
@@ -53,21 +61,25 @@ def open_application(application):
     applications = {
 
         "chrome": "chrome",
+
         "google chrome": "chrome",
 
         "notepad": "notepad",
 
         "calculator": "calc",
+
         "calc": "calc",
 
         "paint": "mspaint",
 
         "command prompt": "cmd",
+
         "cmd": "cmd",
 
         "powershell": "powershell",
 
         "file explorer": "explorer",
+
         "explorer": "explorer",
 
         "task manager": "taskmgr"
@@ -76,10 +88,8 @@ def open_application(application):
     if application not in applications:
 
         return (
-            f"I don't have a configured launcher for {application}. "
-            "Supported applications include Chrome, Notepad, "
-            "Calculator, Paint, Command Prompt, PowerShell, "
-            "File Explorer, and Task Manager."
+            f"I don't have a configured launcher "
+            f"for {application}."
         )
 
     try:
@@ -112,7 +122,9 @@ def open_vscode():
             shell=True
         )
 
-        return "Opening Visual Studio Code."
+        return (
+            "Opening Visual Studio Code."
+        )
 
     except Exception as e:
 
@@ -123,7 +135,7 @@ def open_vscode():
 
 
 # ============================================================
-# FOLDER TOOL
+# FOLDERS
 # ============================================================
 
 def open_folder(folder):
@@ -168,9 +180,8 @@ def open_folder(folder):
     if folder not in folders:
 
         return (
-            f"I don't have a configured path for {folder}. "
-            "You can ask me to open Desktop, Documents, "
-            "Downloads, Pictures, Videos, or Music."
+            f"I don't have a configured path "
+            f"for {folder}."
         )
 
     path = folders[folder]
@@ -178,22 +189,26 @@ def open_folder(folder):
     if not os.path.exists(path):
 
         return (
-            f"The {folder} folder does not exist "
-            "on this computer."
+            f"The {folder} folder does not exist."
         )
 
     try:
 
         subprocess.Popen(
-            ["explorer", path]
+            [
+                "explorer",
+                path
+            ]
         )
 
-        return f"Opening your {folder} folder."
+        return (
+            f"Opening your {folder} folder."
+        )
 
     except Exception as e:
 
         return (
-            f"I couldn't open the {folder} folder. "
+            f"I couldn't open the folder. "
             f"Error: {str(e)}"
         )
 
@@ -204,9 +219,7 @@ def open_folder(folder):
 
 def get_time():
 
-    now = datetime.now()
-
-    return now.strftime(
+    return datetime.now().strftime(
         "The current time is %I:%M %p."
     )
 
@@ -217,9 +230,7 @@ def get_time():
 
 def get_date():
 
-    now = datetime.now()
-
-    return now.strftime(
+    return datetime.now().strftime(
         "Today is %A, %B %d, %Y."
     )
 
@@ -243,8 +254,8 @@ def calculate(expression):
         ):
 
             return (
-                "I can only calculate basic "
-                "mathematical expressions."
+                "I can only calculate "
+                "basic mathematical expressions."
             )
 
         result = eval(
@@ -255,7 +266,9 @@ def calculate(expression):
             {}
         )
 
-        return f"The answer is {result}."
+        return (
+            f"The answer is {result}."
+        )
 
     except Exception:
 
@@ -275,41 +288,57 @@ def weather_description(code):
         0: "Clear sky",
 
         1: "Mainly clear",
+
         2: "Partly cloudy",
+
         3: "Overcast",
 
         45: "Fog",
+
         48: "Depositing rime fog",
 
         51: "Light drizzle",
+
         53: "Moderate drizzle",
+
         55: "Dense drizzle",
 
         56: "Light freezing drizzle",
+
         57: "Dense freezing drizzle",
 
         61: "Slight rain",
+
         63: "Moderate rain",
+
         65: "Heavy rain",
 
         66: "Light freezing rain",
+
         67: "Heavy freezing rain",
 
         71: "Slight snow",
+
         73: "Moderate snow",
+
         75: "Heavy snow",
 
         77: "Snow grains",
 
         80: "Slight rain showers",
+
         81: "Moderate rain showers",
+
         82: "Violent rain showers",
 
         85: "Slight snow showers",
+
         86: "Heavy snow showers",
 
         95: "Thunderstorm",
+
         96: "Thunderstorm with slight hail",
+
         99: "Thunderstorm with heavy hail"
     }
 
@@ -342,31 +371,32 @@ def get_weather(location):
             "format": "json"
         }
 
-        geocode_response = requests.get(
+        response = requests.get(
+
             geocode_url,
+
             params=geocode_params,
+
             timeout=10
         )
 
-        geocode_response.raise_for_status()
+        response.raise_for_status()
 
-        geocode_data = (
-            geocode_response.json()
-        )
+        data = response.json()
 
-        if not geocode_data.get("results"):
+        if not data.get("results"):
 
             return (
-                f"I couldn't find the location {location}."
+                f"I couldn't find {location}."
             )
 
-        place = geocode_data["results"][0]
+        place = data["results"][0]
 
         latitude = place["latitude"]
 
         longitude = place["longitude"]
 
-        place_name = place.get(
+        name = place.get(
             "name",
             location
         )
@@ -403,42 +433,43 @@ def get_weather(location):
         }
 
         weather_response = requests.get(
+
             weather_url,
+
             params=weather_params,
+
             timeout=10
         )
 
         weather_response.raise_for_status()
 
-        weather_data = (
-            weather_response.json()
-        )
+        weather = weather_response.json()
 
-        current = weather_data["current"]
+        current = weather["current"]
 
-        temperature = (
-            current["temperature_2m"]
-        )
+        temperature = current[
+            "temperature_2m"
+        ]
 
-        humidity = (
-            current["relative_humidity_2m"]
-        )
+        humidity = current[
+            "relative_humidity_2m"
+        ]
 
-        feels_like = (
-            current["apparent_temperature"]
-        )
+        feels_like = current[
+            "apparent_temperature"
+        ]
 
-        precipitation = (
-            current["precipitation"]
-        )
+        precipitation = current[
+            "precipitation"
+        ]
 
-        weather_code = (
-            current["weather_code"]
-        )
+        weather_code = current[
+            "weather_code"
+        ]
 
-        wind_speed = (
-            current["wind_speed_10m"]
-        )
+        wind_speed = current[
+            "wind_speed_10m"
+        ]
 
         description = weather_description(
             weather_code
@@ -447,31 +478,21 @@ def get_weather(location):
         return (
 
             f"Current weather in "
-            f"{place_name}, {country}: "
+            f"{name}, {country}: "
 
             f"{description}. "
 
             f"Temperature is "
-            f"{temperature} degrees Celsius, "
+            f"{temperature} degrees Celsius. "
 
-            f"feels like "
-            f"{feels_like} degrees, "
+            f"It feels like "
+            f"{feels_like} degrees. "
 
-            f"humidity is "
-            f"{humidity} percent, "
+            f"Humidity is "
+            f"{humidity} percent. "
 
-            f"wind speed is "
-            f"{wind_speed} kilometers per hour, "
-
-            f"and precipitation is "
-            f"{precipitation} millimeters."
-        )
-
-    except requests.RequestException:
-
-        return (
-            "I couldn't connect to "
-            "the weather service."
+            f"Wind speed is "
+            f"{wind_speed} kilometers per hour."
         )
 
     except Exception as e:
@@ -483,21 +504,24 @@ def get_weather(location):
 
 
 # ============================================================
-# SCREENSHOT TOOL
+# SCREENSHOT
 # ============================================================
 
 def take_screenshot():
 
     try:
 
-        screenshots_folder = os.path.join(
+        folder = os.path.join(
+
             os.path.expanduser("~"),
+
             "Pictures",
+
             "LEO Screenshots"
         )
 
         os.makedirs(
-            screenshots_folder,
+            folder,
             exist_ok=True
         )
 
@@ -509,20 +533,20 @@ def take_screenshot():
             f"LEO_Screenshot_{timestamp}.png"
         )
 
-        filepath = os.path.join(
-            screenshots_folder,
+        path = os.path.join(
+            folder,
             filename
         )
 
-        screenshot = pyautogui.screenshot()
+        image = pyautogui.screenshot()
 
-        screenshot.save(
-            filepath
+        image.save(
+            path
         )
 
         return (
             f"Screenshot saved successfully "
-            f"at {filepath}."
+            f"at {path}."
         )
 
     except Exception as e:
@@ -548,36 +572,32 @@ def get_system_info():
 
         release = platform.release()
 
-        version = platform.version()
-
         processor = platform.processor()
 
         memory = psutil.virtual_memory()
 
-        memory_used = round(
+        used = round(
             memory.used / (1024 ** 3),
             2
         )
 
-        memory_total = round(
+        total = round(
             memory.total / (1024 ** 3),
             2
         )
 
-        memory_percent = memory.percent
-
         return (
 
-            f"System: {system}. "
+            f"Operating system: "
+            f"{system} {release}. "
 
-            f"Windows version: {release}. "
-
-            f"Processor: {processor}. "
+            f"Processor: "
+            f"{processor}. "
 
             f"Memory usage: "
-            f"{memory_used} GB of "
-            f"{memory_total} GB, "
-            f"which is {memory_percent} percent."
+            f"{used} GB of {total} GB, "
+
+            f"which is {memory.percent} percent."
         )
 
     except Exception as e:
@@ -603,23 +623,28 @@ def get_battery_status():
         if battery is None:
 
             return (
-                "I couldn't detect a battery "
-                "on this computer."
+                "I couldn't detect a battery."
             )
 
         percentage = battery.percent
 
         if battery.power_plugged:
 
-            status = "and the charger is connected."
+            status = (
+                "the charger is connected."
+            )
 
         else:
 
-            status = "and the computer is running on battery."
+            status = (
+                "the computer is running on battery."
+            )
 
         return (
-            f"Battery is at {percentage} percent, "
-            f"{status}"
+
+            f"Battery is at "
+            f"{percentage} percent, "
+            f"and {status}"
         )
 
     except Exception as e:
@@ -631,14 +656,12 @@ def get_battery_status():
 
 
 # ============================================================
-# VOLUME UP
+# VOLUME
 # ============================================================
 
 def volume_up():
 
     try:
-
-        import pyautogui
 
         for _ in range(5):
 
@@ -656,15 +679,9 @@ def volume_up():
         )
 
 
-# ============================================================
-# VOLUME DOWN
-# ============================================================
-
 def volume_down():
 
     try:
-
-        import pyautogui
 
         for _ in range(5):
 
@@ -681,10 +698,6 @@ def volume_down():
             f"Error: {str(e)}"
         )
 
-
-# ============================================================
-# MUTE
-# ============================================================
 
 def mute_volume():
 
@@ -743,33 +756,41 @@ def search_files(filename):
 
         results = []
 
-        excluded_directories = {
+        excluded = {
+
             ".git",
+
             ".venv",
+
             "node_modules",
+
             "__pycache__"
         }
 
-        for root, directories, files in os.walk(home):
+        for root, directories, files in os.walk(
+            home
+        ):
 
             directories[:] = [
+
                 directory
+
                 for directory in directories
+
                 if directory.lower()
-                not in excluded_directories
+                not in excluded
             ]
 
             for file in files:
 
                 if filename in file.lower():
 
-                    full_path = os.path.join(
-                        root,
-                        file
-                    )
-
                     results.append(
-                        full_path
+
+                        os.path.join(
+                            root,
+                            file
+                        )
                     )
 
                     if len(results) >= 10:
@@ -787,17 +808,17 @@ def search_files(filename):
                 f"matching {filename}."
             )
 
-        response = (
+        result = (
             f"I found {len(results)} matching files."
         )
 
-        for result in results:
+        for path in results:
 
-            response += (
-                f"\n{result}"
+            result += (
+                f"\n{path}"
             )
 
-        return response
+        return result
 
     except Exception as e:
 
@@ -815,14 +836,17 @@ def create_note(note):
 
     try:
 
-        notes_folder = os.path.join(
+        folder = os.path.join(
+
             os.path.expanduser("~"),
+
             "Documents",
+
             "LEO Notes"
         )
 
         os.makedirs(
-            notes_folder,
+            folder,
             exist_ok=True
         )
 
@@ -834,13 +858,13 @@ def create_note(note):
             f"note_{timestamp}.txt"
         )
 
-        filepath = os.path.join(
-            notes_folder,
+        path = os.path.join(
+            folder,
             filename
         )
 
         with open(
-            filepath,
+            path,
             "w",
             encoding="utf-8"
         ) as file:
@@ -848,8 +872,7 @@ def create_note(note):
             file.write(note)
 
         return (
-            f"Your note was saved at "
-            f"{filepath}."
+            f"Your note was saved at {path}."
         )
 
     except Exception as e:
@@ -872,27 +895,30 @@ def read_text_file(filepath):
             filepath
         )
 
-        if not os.path.isfile(filepath):
+        if not os.path.isfile(
+            filepath
+        ):
 
             return (
-                f"I couldn't find the file "
-                f"{filepath}."
+                f"I couldn't find {filepath}."
             )
 
         extension = os.path.splitext(
             filepath
         )[1].lower()
 
-        if extension not in {
+        allowed = {
             ".txt",
             ".md",
             ".csv",
             ".log"
-        }:
+        }
+
+        if extension not in allowed:
 
             return (
                 "For safety, I can only read "
-                "text, markdown, CSV, and log files."
+                "TXT, MD, CSV, and LOG files."
             )
 
         with open(
@@ -907,13 +933,9 @@ def read_text_file(filepath):
 
             return "The file is empty."
 
-        max_characters = 6000
+        if len(content) > 6000:
 
-        if len(content) > max_characters:
-
-            content = content[
-                :max_characters
-            ]
+            content = content[:6000]
 
             content += (
                 "\nThe file was truncated "
