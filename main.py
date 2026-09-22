@@ -1,5 +1,6 @@
 import os
-import json
+import time
+import threading
 
 import speech_recognition as sr
 import pyttsx3
@@ -25,299 +26,277 @@ from tools.basic_tools import (
     lock_windows,
     search_files,
     create_note,
-    read_text_file
+    read_text_file,
 )
 
 from memory import (
     remember_fact,
     forget_fact,
-    get_memory
+    get_memory,
 )
 
 from reminders import (
     create_reminder,
     list_reminders,
     cancel_reminder,
-    ReminderMonitor
+    ReminderMonitor,
 )
 
 from conversation_history import (
     add_message,
-    format_recent_history,
-    clear_history
+    get_recent_history,
+    clear_history,
+)
+
+from timers import (
+    create_timer,
+    list_timers,
+    cancel_timer,
+    TimerMonitor,
+)
+
+from alarms import (
+    create_alarm,
+    list_alarms,
+    cancel_alarm,
+    AlarmMonitor,
+)
+
+from preferences import (
+    set_preference,
+    get_preference,
+    get_all_preferences,
+    reset_preferences,
 )
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+# =========================================================
+# ENVIRONMENT
+# =========================================================
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv(
-    "GEMINI_API_KEY"
-)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
 
-    raise ValueError(
-        "GEMINI_API_KEY was not found "
-        "in your .env file."
+    raise RuntimeError(
+        "GEMINI_API_KEY was not found in .env"
     )
 
-
-# ============================================================
-# GEMINI
-# ============================================================
 
 client = genai.Client(
     api_key=GEMINI_API_KEY
 )
 
 
-# ============================================================
+# =========================================================
 # VOICE ENGINE
-# ============================================================
+# =========================================================
 
 engine = pyttsx3.init()
 
+engine.setProperty(
+    "rate",
+    175
+)
 
-# ============================================================
+engine.setProperty(
+    "volume",
+    1.0
+)
+
+
+# =========================================================
+# GLOBAL STATE
+# =========================================================
+
+previous_interaction_id = None
+
+conversation_active = True
+
+speaking = False
+
+stop_requested = False
+
+
+# =========================================================
 # SYSTEM INSTRUCTION
-# ============================================================
+# =========================================================
 
 SYSTEM_INSTRUCTION = """
+You are LEO, a personal Windows desktop voice assistant.
 
-You are LEO, a personal AI voice assistant
-running on a Windows computer.
+You are conversational, concise, helpful, and natural.
 
-Your name is LEO.
+The user communicates with you primarily through voice.
 
-You are helpful, concise, friendly, and natural.
+IMPORTANT BEHAVIOR:
 
-Your responses are spoken aloud.
+1. Understand natural language.
+2. Do not require exact commands.
+3. Use tools when a real action is requested.
+4. Never claim an action succeeded if the tool failed.
+5. If a tool returns an error, explain it briefly.
+6. Remember information when the user explicitly asks you to remember it.
+7. Use conversation history for follow-up questions.
+8. Maintain conversational context.
+9. Use Google Search when current web information is required.
+10. Do not invent current information.
+11. Prefer short spoken responses.
+12. Avoid unnecessary long explanations.
 
-Keep responses reasonably short.
+CONTEXTUAL COMMANDS:
 
-Avoid markdown and unnecessary formatting.
+Understand commands such as:
 
-============================================================
-CURRENT INFORMATION
-============================================================
+"open it"
+"close that"
+"search that"
+"remember this"
+"what did I just say?"
+"do that again"
+"what about tomorrow?"
+"cancel it"
+"show me my reminders"
+"set one for later"
 
-Use Google Search for:
+Use previous conversation context when interpreting these.
 
-- Latest information
-- Current news
-- Recent events
-- Current prices
-- Recent technology developments
-- Up-to-date facts
+TIME:
 
-============================================================
-COMPUTER
-============================================================
+Understand natural timer requests:
 
-Use the application tool for:
+"set a timer for 5 minutes"
+"timer for 30 seconds"
+"remind me in 2 hours"
 
-- Chrome
-- Notepad
-- Calculator
-- Paint
-- Command Prompt
-- PowerShell
-- File Explorer
-- Task Manager
+For timers, use create_timer.
 
-Use the VS Code tool for:
+ALARMS:
 
-- VS Code
-- Visual Studio Code
+Understand:
 
-Use the folder tool for:
+"set an alarm for 7 AM"
+"wake me up at 6:30"
+"set my daily alarm for 8 AM"
 
-- Desktop
-- Documents
-- Downloads
-- Pictures
-- Videos
-- Music
+Use create_alarm.
 
-============================================================
-SYSTEM
-============================================================
+REMINDERS:
 
-Use the screenshot tool for:
+For date/time reminders use create_reminder.
 
-- Take a screenshot
-- Screenshot the screen
-- Capture the screen
+MEMORY:
 
-Use the system information tool for:
+Use remember_fact when the user explicitly tells you to remember something.
 
-- Computer specifications
-- Operating system
-- Processor
-- RAM
+Use get_memory when the user asks what you remember.
 
-Use the battery tool for:
+Use forget_fact when the user asks you to forget something.
 
-- Battery percentage
-- Charging status
-- Battery state
+PREFERENCES:
 
-Use volume tools for:
+The user may tell you preferences such as:
 
-- Increase volume
-- Decrease volume
-- Mute volume
+"my name is..."
+"call me..."
+"my default location is..."
+"set my voice speed..."
 
-Use the lock tool when explicitly asked to lock Windows.
+Use preference tools.
 
-============================================================
-FILES
-============================================================
+WINDOWS:
 
-Use file search when asked to find a file.
+You can open websites, applications, folders, VS Code,
+take screenshots, control volume, lock Windows, inspect
+system information and battery status.
 
-Use the note tool to save notes.
+FILES:
 
-Use the read-text-file tool only for:
+You can search files, create notes and read supported text files.
 
-- TXT
-- MD
-- CSV
-- LOG
+SAFETY:
 
-Do not claim to read files unless the tool actually succeeds.
+Do not perform destructive or dangerous actions unless
+the user explicitly requests them and the tool supports them.
 
-============================================================
-REMINDERS
-============================================================
-
-Use create_reminder when the user asks for a reminder.
-
-The reminder time must be supplied as:
-
-YYYY-MM-DD HH:MM
-
-Use list_reminders when the user asks:
-
-- What reminders do I have?
-- List my reminders
-- Show my reminders
-
-Use cancel_reminder when the user explicitly asks
-to cancel a reminder.
-
-============================================================
-MEMORY
-============================================================
-
-Use remember_fact only when the user explicitly asks
-you to remember a personal fact.
-
-Use forget_fact when the user explicitly asks
-you to forget something.
-
-Use get_memory when the user asks about stored memory.
-
-============================================================
-CONVERSATION HISTORY
-============================================================
-
-Use the conversation history tool when the user asks:
-
-- What did we talk about?
-- Show recent conversation
-- What did I say earlier?
-- Show conversation history
-
-Use clear history only when explicitly requested.
-
-============================================================
-SAFETY
-============================================================
-
-Only perform actions through available tools.
-
-Never claim an action succeeded if the tool did not
-actually succeed.
-
-Do not execute arbitrary shell commands.
-
-Do not delete files.
-
-Do not modify system settings without a dedicated tool.
-
-Do not invent information.
-
-============================================================
+Keep spoken responses concise.
 """
 
 
-# ============================================================
+# =========================================================
 # SPEAK
-# ============================================================
+# =========================================================
 
 def speak(text):
 
-    if not text:
+    global speaking
+    global stop_requested
 
+    if not text:
         return
 
-    print(
-        "LEO:",
-        text
-    )
+    speaking = True
+    stop_requested = False
 
-    engine.say(
-        text
-    )
+    print(f"LEO: {text}")
 
-    engine.runAndWait()
+    try:
+
+        engine.say(text)
+
+        engine.runAndWait()
+
+    except Exception as error:
+
+        print(
+            f"Speech error: {error}"
+        )
+
+    finally:
+
+        speaking = False
 
 
-# ============================================================
+# =========================================================
 # LISTEN
-# ============================================================
+# =========================================================
 
-def listen():
+recognizer = sr.Recognizer()
 
-    recognizer = sr.Recognizer()
+recognizer.energy_threshold = 300
+
+recognizer.dynamic_energy_threshold = True
+
+
+def listen(timeout=5, phrase_time_limit=12):
 
     with sr.Microphone() as source:
 
-        print(
-            "\nListening..."
-        )
-
         try:
+
+            print("\nListening...")
 
             recognizer.adjust_for_ambient_noise(
                 source,
-                duration=1
+                duration=0.5
             )
 
             audio = recognizer.listen(
                 source,
-                timeout=5,
-                phrase_time_limit=10
+                timeout=timeout,
+                phrase_time_limit=phrase_time_limit
             )
 
         except sr.WaitTimeoutError:
 
-            print(
-                "No speech detected."
-            )
-
             return ""
 
-        except Exception as e:
+        except Exception as error:
 
             print(
-                "[MICROPHONE ERROR]",
-                e
+                f"Microphone error: {error}"
             )
 
             return ""
@@ -328,84 +307,97 @@ def listen():
             audio
         )
 
+        text = text.strip()
+
         print(
-            "You:",
-            text
+            f"You: {text}"
         )
 
-        return text.lower()
+        return text
 
     except sr.UnknownValueError:
 
-        print(
-            "LEO couldn't understand you."
-        )
-
         return ""
 
-    except sr.RequestError:
+    except sr.RequestError as error:
 
         print(
-            "Speech recognition service unavailable."
-        )
-
-        speak(
-            "I'm having trouble connecting "
-            "to speech recognition."
+            f"Speech recognition error: {error}"
         )
 
         return ""
 
 
-# ============================================================
+# =========================================================
+# COMMAND NORMALIZATION
+# =========================================================
+
+def normalize_command(command):
+
+    command = command.strip()
+
+    prefixes = [
+        "leo",
+        "hey leo",
+        "okay leo",
+        "ok leo",
+    ]
+
+    lower = command.lower()
+
+    for prefix in prefixes:
+
+        if lower.startswith(prefix):
+
+            command = command[
+                len(prefix):
+            ].strip()
+
+            break
+
+    return command
+
+
+# =========================================================
 # WAKE WORD
-# ============================================================
+# =========================================================
 
 def wait_for_wake_word():
 
-    while True:
-
-        command = listen()
-
-        if not command:
-
-            continue
-
-        if "leo" in command:
-
-            command = command.replace(
-                "leo",
-                "",
-                1
-            ).strip()
-
-            if command:
-
-                return command
-
-            speak(
-                "Yes?"
-            )
-
-            return ""
-
-
-# ============================================================
-# REMINDER CALLBACK
-# ============================================================
-
-def reminder_callback(
-    reminder
-):
-
-    message = reminder.get(
-        "message",
-        "You have a reminder."
+    print(
+        "\nWaiting for wake word: LEO..."
     )
 
+    while True:
+
+        command = listen(
+            timeout=5,
+            phrase_time_limit=8
+        )
+
+        if not command:
+            continue
+
+        lower = command.lower()
+
+        if "leo" in lower:
+
+            return normalize_command(
+                command
+            )
+
+
+# =========================================================
+# REMINDER CALLBACK
+# =========================================================
+
+def reminder_callback(
+    reminder_id,
+    message
+):
+
     print(
-        "\n[REMINDER]",
-        message
+        f"\nREMINDER: {message}"
     )
 
     speak(
@@ -413,1268 +405,1175 @@ def reminder_callback(
     )
 
 
-# ============================================================
+# =========================================================
+# TIMER CALLBACK
+# =========================================================
+
+def timer_callback(
+    timer_id,
+    message
+):
+
+    print(
+        f"\nTIMER FINISHED: {message}"
+    )
+
+    speak(
+        f"Timer finished. {message}"
+    )
+
+
+# =========================================================
+# ALARM CALLBACK
+# =========================================================
+
+def alarm_callback(
+    alarm_id,
+    message
+):
+
+    print(
+        f"\nALARM: {message}"
+    )
+
+    speak(
+        f"Alarm. {message}"
+    )
+
+
+# =========================================================
 # TOOL DEFINITIONS
-# ============================================================
+# =========================================================
 
-open_website_tool = {
-
-    "type": "function",
-
-    "name": "open_website",
-
-    "description": (
-        "Open a supported website."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "website": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "website"
-        ]
-    }
-}
-
-
-open_application_tool = {
-
-    "type": "function",
-
-    "name": "open_application",
-
-    "description": (
-        "Open a supported Windows application."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "application": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "application"
-        ]
-    }
-}
-
-
-open_vscode_tool = {
-
-    "type": "function",
-
-    "name": "open_vscode",
-
-    "description": (
-        "Open Visual Studio Code."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-open_folder_tool = {
-
-    "type": "function",
-
-    "name": "open_folder",
-
-    "description": (
-        "Open a supported Windows folder."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "folder": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "folder"
-        ]
-    }
-}
-
-
-get_time_tool = {
-
-    "type": "function",
-
-    "name": "get_time",
-
-    "description": (
-        "Get the current local time."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-get_date_tool = {
-
-    "type": "function",
-
-    "name": "get_date",
-
-    "description": (
-        "Get today's date."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-calculate_tool = {
-
-    "type": "function",
-
-    "name": "calculate",
-
-    "description": (
-        "Calculate a basic mathematical expression."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "expression": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "expression"
-        ]
-    }
-}
-
-
-weather_tool = {
-
-    "type": "function",
-
-    "name": "get_weather",
-
-    "description": (
-        "Get current weather for a location."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "location": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "location"
-        ]
-    }
-}
-
-
-screenshot_tool = {
-
-    "type": "function",
-
-    "name": "take_screenshot",
-
-    "description": (
-        "Take and save a screenshot."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-system_info_tool = {
-
-    "type": "function",
-
-    "name": "get_system_info",
-
-    "description": (
-        "Get computer system information."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-battery_tool = {
-
-    "type": "function",
-
-    "name": "get_battery_status",
-
-    "description": (
-        "Get laptop battery status."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-volume_up_tool = {
-
-    "type": "function",
-
-    "name": "volume_up",
-
-    "description": (
-        "Increase system volume."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-volume_down_tool = {
-
-    "type": "function",
-
-    "name": "volume_down",
-
-    "description": (
-        "Decrease system volume."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-mute_volume_tool = {
-
-    "type": "function",
-
-    "name": "mute_volume",
-
-    "description": (
-        "Mute system volume."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-lock_windows_tool = {
-
-    "type": "function",
-
-    "name": "lock_windows",
-
-    "description": (
-        "Lock the Windows computer."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-search_files_tool = {
-
-    "type": "function",
-
-    "name": "search_files",
-
-    "description": (
-        "Search the user's home directory for files."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "filename": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "filename"
-        ]
-    }
-}
-
-
-create_note_tool = {
-
-    "type": "function",
-
-    "name": "create_note",
-
-    "description": (
-        "Create a local text note."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "note": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "note"
-        ]
-    }
-}
-
-
-read_text_file_tool = {
-
-    "type": "function",
-
-    "name": "read_text_file",
-
-    "description": (
-        "Read a supported local text file."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "filepath": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "filepath"
-        ]
-    }
-}
-
-
-create_reminder_tool = {
-
-    "type": "function",
-
-    "name": "create_reminder",
-
-    "description": (
-        "Create a reminder for a specific date and time."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "message": {
-
-                "type": "string",
-
-                "description": (
-                    "What the user wants to be reminded about."
-                )
-            },
-
-            "reminder_time": {
-
-                "type": "string",
-
-                "description": (
-                    "Reminder date and time in "
-                    "YYYY-MM-DD HH:MM format."
-                )
-            }
-        },
-
-        "required": [
-            "message",
-            "reminder_time"
-        ]
-    }
-}
-
-
-list_reminders_tool = {
-
-    "type": "function",
-
-    "name": "list_reminders",
-
-    "description": (
-        "List all active reminders."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-cancel_reminder_tool = {
-
-    "type": "function",
-
-    "name": "cancel_reminder",
-
-    "description": (
-        "Cancel an existing reminder by its ID."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "reminder_id": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "reminder_id"
-        ]
-    }
-}
-
-
-remember_fact_tool = {
-
-    "type": "function",
-
-    "name": "remember_fact",
-
-    "description": (
-        "Save a personal fact explicitly "
-        "provided by the user."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "key": {
-
-                "type": "string"
-            },
-
-            "value": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "key",
-            "value"
-        ]
-    }
-}
-
-
-forget_fact_tool = {
-
-    "type": "function",
-
-    "name": "forget_fact",
-
-    "description": (
-        "Forget a stored personal fact."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "key": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "key"
-        ]
-    }
-}
-
-
-get_memory_tool = {
-
-    "type": "function",
-
-    "name": "get_memory",
-
-    "description": (
-        "Retrieve stored memory."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "key": {
-
-                "type": "string"
-            }
-        },
-
-        "required": [
-            "key"
-        ]
-    }
-}
-
-
-get_history_tool = {
-
-    "type": "function",
-
-    "name": "get_recent_history",
-
-    "description": (
-        "Retrieve recent conversation history."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {
-
-            "count": {
-
-                "type": "integer",
-
-                "description": (
-                    "Number of recent messages."
-                )
-            }
-        },
-
-        "required": [
-            "count"
-        ]
-    }
-}
-
-
-clear_history_tool = {
-
-    "type": "function",
-
-    "name": "clear_history",
-
-    "description": (
-        "Clear locally stored conversation history."
-    ),
-
-    "parameters": {
-
-        "type": "object",
-
-        "properties": {},
-
-        "required": []
-    }
-}
-
-
-# ============================================================
-# ALL TOOLS
-# ============================================================
-
-tools = [
+TOOL_DEFINITIONS = [
 
     {
-        "type": "google_search"
+        "name": "open_website",
+        "description": "Open a website in the browser.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "website": {
+                    "type": "string"
+                }
+            },
+            "required": ["website"]
+        }
     },
 
-    open_website_tool,
+    {
+        "name": "open_application",
+        "description": "Open a Windows application.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "string"
+                }
+            },
+            "required": ["application"]
+        }
+    },
 
-    open_application_tool,
+    {
+        "name": "open_vscode",
+        "description": "Open Visual Studio Code.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    open_vscode_tool,
+    {
+        "name": "open_folder",
+        "description": "Open a Windows folder.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "folder": {
+                    "type": "string"
+                }
+            },
+            "required": ["folder"]
+        }
+    },
 
-    open_folder_tool,
+    {
+        "name": "get_time",
+        "description": "Get the current local time.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    get_time_tool,
+    {
+        "name": "get_date",
+        "description": "Get today's date.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    get_date_tool,
+    {
+        "name": "calculate",
+        "description": "Calculate a mathematical expression.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string"
+                }
+            },
+            "required": ["expression"]
+        }
+    },
 
-    calculate_tool,
+    {
+        "name": "get_weather",
+        "description": "Get current weather for a location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string"
+                }
+            },
+            "required": ["location"]
+        }
+    },
 
-    weather_tool,
+    {
+        "name": "take_screenshot",
+        "description": "Take a screenshot of the desktop.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    screenshot_tool,
+    {
+        "name": "get_system_info",
+        "description": "Get Windows system information.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    system_info_tool,
+    {
+        "name": "get_battery_status",
+        "description": "Get battery status.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    battery_tool,
+    {
+        "name": "volume_up",
+        "description": "Increase Windows volume.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    volume_up_tool,
+    {
+        "name": "volume_down",
+        "description": "Decrease Windows volume.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    volume_down_tool,
+    {
+        "name": "mute_volume",
+        "description": "Mute Windows volume.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    mute_volume_tool,
+    {
+        "name": "lock_windows",
+        "description": "Lock Windows.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    lock_windows_tool,
+    {
+        "name": "search_files",
+        "description": "Search for files on the user's computer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                }
+            },
+            "required": ["filename"]
+        }
+    },
 
-    search_files_tool,
+    {
+        "name": "create_note",
+        "description": "Create a text note.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "type": "string"
+                }
+            },
+            "required": ["note"]
+        }
+    },
 
-    create_note_tool,
+    {
+        "name": "read_text_file",
+        "description": "Read a supported text file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filepath": {
+                    "type": "string"
+                }
+            },
+            "required": ["filepath"]
+        }
+    },
 
-    read_text_file_tool,
+    # =====================================================
+    # REMINDERS
+    # =====================================================
 
-    create_reminder_tool,
+    {
+        "name": "create_reminder",
+        "description": "Create a reminder for a specific date and time. Use YYYY-MM-DD HH:MM.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "reminder_time": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "message",
+                "reminder_time"
+            ]
+        }
+    },
 
-    list_reminders_tool,
+    {
+        "name": "list_reminders",
+        "description": "List reminders.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    cancel_reminder_tool,
+    {
+        "name": "cancel_reminder",
+        "description": "Cancel a reminder using its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reminder_id": {
+                    "type": "string"
+                }
+            },
+            "required": ["reminder_id"]
+        }
+    },
 
-    remember_fact_tool,
+    # =====================================================
+    # TIMERS
+    # =====================================================
 
-    forget_fact_tool,
+    {
+        "name": "create_timer",
+        "description": "Start a countdown timer in seconds.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "seconds": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "seconds",
+                "message"
+            ]
+        }
+    },
 
-    get_memory_tool,
+    {
+        "name": "list_timers",
+        "description": "List active countdown timers.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
 
-    get_history_tool,
+    {
+        "name": "cancel_timer",
+        "description": "Cancel a countdown timer using its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "timer_id": {
+                    "type": "string"
+                }
+            },
+            "required": ["timer_id"]
+        }
+    },
 
-    clear_history_tool
+    # =====================================================
+    # ALARMS
+    # =====================================================
+
+    {
+        "name": "create_alarm",
+        "description": "Create a daily repeating alarm using HH:MM 24-hour format.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "alarm_time": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "alarm_time",
+                "message"
+            ]
+        }
+    },
+
+    {
+        "name": "list_alarms",
+        "description": "List active alarms.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    {
+        "name": "cancel_alarm",
+        "description": "Cancel a daily alarm using its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "alarm_id": {
+                    "type": "string"
+                }
+            },
+            "required": ["alarm_id"]
+        }
+    },
+
+    # =====================================================
+    # MEMORY
+    # =====================================================
+
+    {
+        "name": "remember_fact",
+        "description": "Remember a fact explicitly provided by the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "key",
+                "value"
+            ]
+        }
+    },
+
+    {
+        "name": "forget_fact",
+        "description": "Forget a stored fact.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                }
+            },
+            "required": ["key"]
+        }
+    },
+
+    {
+        "name": "get_memory",
+        "description": "Retrieve stored memory.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    # =====================================================
+    # CONVERSATION
+    # =====================================================
+
+    {
+        "name": "get_recent_history",
+        "description": "Retrieve recent conversation history.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                }
+            }
+        }
+    },
+
+    {
+        "name": "clear_history",
+        "description": "Clear stored conversation history.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    # =====================================================
+    # PREFERENCES
+    # =====================================================
+
+    {
+        "name": "set_preference",
+        "description": "Set a user preference.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "key",
+                "value"
+            ]
+        }
+    },
+
+    {
+        "name": "get_preference",
+        "description": "Get one user preference.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                }
+            },
+            "required": ["key"]
+        }
+    },
+
+    {
+        "name": "get_all_preferences",
+        "description": "Get all user preferences.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    {
+        "name": "reset_preferences",
+        "description": "Reset preferences to defaults.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
 ]
 
 
-# ============================================================
-# EXECUTE TOOL
-# ============================================================
+# =========================================================
+# GEMINI TOOLS
+# =========================================================
+
+tools = [
+    {
+        "type": "google_search"
+    }
+]
+
+for definition in TOOL_DEFINITIONS:
+
+    tools.append(
+        {
+            "type": "function",
+            "name": definition["name"],
+            "description": definition["description"],
+            "parameters": definition["parameters"]
+        }
+    )
+
+
+# =========================================================
+# TOOL EXECUTION
+# =========================================================
 
 def execute_tool(
-    name,
+    tool_name,
     arguments
 ):
 
-    print(
-        f"\n[TOOL] {name}"
-    )
+    try:
 
-    print(
-        f"[ARGS] {arguments}"
-    )
+        if tool_name == "open_website":
 
-
-    if name == "open_website":
-
-        return open_website(
-            arguments["website"]
-        )
-
-
-    elif name == "open_application":
-
-        return open_application(
-            arguments["application"]
-        )
-
-
-    elif name == "open_vscode":
-
-        return open_vscode()
-
-
-    elif name == "open_folder":
-
-        return open_folder(
-            arguments["folder"]
-        )
-
-
-    elif name == "get_time":
-
-        return get_time()
-
-
-    elif name == "get_date":
-
-        return get_date()
-
-
-    elif name == "calculate":
-
-        return calculate(
-            arguments["expression"]
-        )
-
-
-    elif name == "get_weather":
-
-        return get_weather(
-            arguments["location"]
-        )
-
-
-    elif name == "take_screenshot":
-
-        return take_screenshot()
-
-
-    elif name == "get_system_info":
-
-        return get_system_info()
-
-
-    elif name == "get_battery_status":
-
-        return get_battery_status()
-
-
-    elif name == "volume_up":
-
-        return volume_up()
-
-
-    elif name == "volume_down":
-
-        return volume_down()
-
-
-    elif name == "mute_volume":
-
-        return mute_volume()
-
-
-    elif name == "lock_windows":
-
-        return lock_windows()
-
-
-    elif name == "search_files":
-
-        return search_files(
-            arguments["filename"]
-        )
-
-
-    elif name == "create_note":
-
-        return create_note(
-            arguments["note"]
-        )
-
-
-    elif name == "read_text_file":
-
-        return read_text_file(
-            arguments["filepath"]
-        )
-
-
-    elif name == "create_reminder":
-
-        return create_reminder(
-
-            arguments["message"],
-
-            arguments["reminder_time"]
-
-        )
-
-
-    elif name == "list_reminders":
-
-        return list_reminders()
-
-
-    elif name == "cancel_reminder":
-
-        return cancel_reminder(
-
-            arguments["reminder_id"]
-
-        )
-
-
-    elif name == "remember_fact":
-
-        return remember_fact(
-
-            arguments["key"],
-
-            arguments["value"]
-
-        )
-
-
-    elif name == "forget_fact":
-
-        return forget_fact(
-
-            arguments["key"]
-
-        )
-
-
-    elif name == "get_memory":
-
-        return get_memory(
-
-            arguments["key"]
-
-        )
-
-
-    elif name == "get_recent_history":
-
-        count = arguments.get(
-            "count",
-            10
-        )
-
-        return format_recent_history(
-            count
-        )
-
-
-    elif name == "clear_history":
-
-        return clear_history()
-
-
-    return "Unknown tool."
-
-
-# ============================================================
-# GEMINI
-# ============================================================
-
-def ask_ai(
-    command,
-    previous_interaction_id=None
-):
-
-    interaction = client.interactions.create(
-
-        model="gemini-3.8-flash",
-
-        input=command,
-
-        previous_interaction_id=(
-            previous_interaction_id
-        ),
-
-        system_instruction=(
-            SYSTEM_INSTRUCTION
-        ),
-
-        tools=tools
-    )
-
-
-    while True:
-
-        function_calls = []
-
-        for step in interaction.steps:
-
-            if step.type == "function_call":
-
-                function_calls.append(
-                    step
-                )
-
-
-        if not function_calls:
-
-            return (
-
-                interaction.output_text,
-
-                interaction.id
-
+            return open_website(
+                arguments.get("website")
             )
 
+        if tool_name == "open_application":
 
-        function_results = []
+            return open_application(
+                arguments.get("application")
+            )
 
+        if tool_name == "open_vscode":
 
-        for step in function_calls:
+            return open_vscode()
 
-            try:
+        if tool_name == "open_folder":
 
-                arguments = step.arguments
+            return open_folder(
+                arguments.get("folder")
+            )
 
-                if isinstance(
-                    arguments,
-                    str
-                ):
+        if tool_name == "get_time":
 
-                    arguments = json.loads(
-                        arguments
-                    )
+            return get_time()
 
+        if tool_name == "get_date":
 
-                result = execute_tool(
+            return get_date()
 
-                    step.name,
+        if tool_name == "calculate":
 
-                    arguments
+            return calculate(
+                arguments.get("expression")
+            )
 
+        if tool_name == "get_weather":
+
+            return get_weather(
+                arguments.get("location")
+            )
+
+        if tool_name == "take_screenshot":
+
+            return take_screenshot()
+
+        if tool_name == "get_system_info":
+
+            return get_system_info()
+
+        if tool_name == "get_battery_status":
+
+            return get_battery_status()
+
+        if tool_name == "volume_up":
+
+            return volume_up()
+
+        if tool_name == "volume_down":
+
+            return volume_down()
+
+        if tool_name == "mute_volume":
+
+            return mute_volume()
+
+        if tool_name == "lock_windows":
+
+            return lock_windows()
+
+        if tool_name == "search_files":
+
+            return search_files(
+                arguments.get("filename")
+            )
+
+        if tool_name == "create_note":
+
+            return create_note(
+                arguments.get("note")
+            )
+
+        if tool_name == "read_text_file":
+
+            return read_text_file(
+                arguments.get("filepath")
+            )
+
+        # -------------------------------------------------
+        # REMINDERS
+        # -------------------------------------------------
+
+        if tool_name == "create_reminder":
+
+            return create_reminder(
+                arguments.get("message"),
+                arguments.get("reminder_time")
+            )
+
+        if tool_name == "list_reminders":
+
+            return list_reminders()
+
+        if tool_name == "cancel_reminder":
+
+            return cancel_reminder(
+                arguments.get("reminder_id")
+            )
+
+        # -------------------------------------------------
+        # TIMERS
+        # -------------------------------------------------
+
+        if tool_name == "create_timer":
+
+            return create_timer(
+                arguments.get("seconds"),
+                arguments.get("message")
+            )
+
+        if tool_name == "list_timers":
+
+            return list_timers()
+
+        if tool_name == "cancel_timer":
+
+            return cancel_timer(
+                arguments.get("timer_id")
+            )
+
+        # -------------------------------------------------
+        # ALARMS
+        # -------------------------------------------------
+
+        if tool_name == "create_alarm":
+
+            return create_alarm(
+                arguments.get("alarm_time"),
+                arguments.get("message")
+            )
+
+        if tool_name == "list_alarms":
+
+            return list_alarms()
+
+        if tool_name == "cancel_alarm":
+
+            return cancel_alarm(
+                arguments.get("alarm_id")
+            )
+
+        # -------------------------------------------------
+        # MEMORY
+        # -------------------------------------------------
+
+        if tool_name == "remember_fact":
+
+            return remember_fact(
+                arguments.get("key"),
+                arguments.get("value")
+            )
+
+        if tool_name == "forget_fact":
+
+            return forget_fact(
+                arguments.get("key")
+            )
+
+        if tool_name == "get_memory":
+
+            return get_memory()
+
+        # -------------------------------------------------
+        # CONVERSATION
+        # -------------------------------------------------
+
+        if tool_name == "get_recent_history":
+
+            count = arguments.get(
+                "count",
+                10
+            )
+
+            return get_recent_history(
+                count
+            )
+
+        if tool_name == "clear_history":
+
+            return clear_history()
+
+        # -------------------------------------------------
+        # PREFERENCES
+        # -------------------------------------------------
+
+        if tool_name == "set_preference":
+
+            return set_preference(
+                arguments.get("key"),
+                arguments.get("value")
+            )
+
+        if tool_name == "get_preference":
+
+            return str(
+                get_preference(
+                    arguments.get("key")
                 )
+            )
+
+        if tool_name == "get_all_preferences":
+
+            return get_all_preferences()
+
+        if tool_name == "reset_preferences":
+
+            return reset_preferences()
+
+        return (
+            f"Unknown tool: {tool_name}"
+        )
+
+    except Exception as error:
+
+        print(
+            f"Tool error [{tool_name}]: {error}"
+        )
+
+        return (
+            f"The tool '{tool_name}' failed: "
+            f"{error}"
+        )
 
 
-                function_results.append({
+# =========================================================
+# ASK GEMINI
+# =========================================================
 
-                    "type": "function_result",
+def ask_ai(user_message):
 
-                    "name": step.name,
+    global previous_interaction_id
 
-                    "call_id": step.id,
+    recent_context = get_recent_history(8)
 
-                    "result": [
+    enhanced_message = f"""
+Recent conversation context:
 
-                        {
+{recent_context}
 
-                            "type": "text",
+Current user request:
 
-                            "text": json.dumps({
+{user_message}
+"""
 
-                                "result": result
-
-                            })
-
-                        }
-
-                    ]
-
-                })
-
-
-            except Exception as e:
-
-                print(
-                    "[TOOL ERROR]",
-                    e
-                )
-
-
-                function_results.append({
-
-                    "type": "function_result",
-
-                    "name": step.name,
-
-                    "call_id": step.id,
-
-                    "result": [
-
-                        {
-
-                            "type": "text",
-
-                            "text": json.dumps({
-
-                                "error": str(e)
-
-                            })
-
-                        }
-
-                    ]
-
-                })
-
+    try:
 
         interaction = client.interactions.create(
 
             model="gemini-3.8-flash",
 
-            previous_interaction_id=(
-                interaction.id
-            ),
+            input=enhanced_message,
 
-            system_instruction=(
-                SYSTEM_INSTRUCTION
-            ),
+            system_instruction=SYSTEM_INSTRUCTION,
 
             tools=tools,
 
-            input=function_results
+            previous_interaction_id=(
+                previous_interaction_id
+            ) if previous_interaction_id else None
         )
 
+    except Exception as error:
 
-# ============================================================
+        print(
+            f"Gemini request error: {error}"
+        )
+
+        return (
+            "I couldn't connect to Gemini right now."
+        )
+
+    while True:
+
+        previous_interaction_id = (
+            interaction.id
+        )
+
+        function_calls = []
+
+        try:
+
+            for output in interaction.outputs:
+
+                if getattr(
+                    output,
+                    "type",
+                    None
+                ) == "function_call":
+
+                    function_calls.append(
+                        output
+                    )
+
+        except Exception as error:
+
+            print(
+                f"Output processing error: {error}"
+            )
+
+        if not function_calls:
+
+            try:
+
+                return (
+                    interaction.output_text
+                    or
+                    "I'm ready."
+                )
+
+            except Exception:
+
+                return "I'm ready."
+
+        function_results = []
+
+        for call in function_calls:
+
+            tool_name = call.name
+
+            arguments = (
+                call.arguments
+                if call.arguments
+                else {}
+            )
+
+            print(
+                f"\n[Tool] {tool_name}"
+            )
+
+            print(
+                f"[Arguments] {arguments}"
+            )
+
+            result = execute_tool(
+                tool_name,
+                arguments
+            )
+
+            print(
+                f"[Result] {result}"
+            )
+
+            function_results.append(
+                {
+                    "type": "function_result",
+                    "call_id": call.id,
+                    "result": str(result)
+                }
+            )
+
+        try:
+
+            interaction = client.interactions.create(
+
+                model="gemini-3.8-flash",
+
+                input=function_results,
+
+                system_instruction=SYSTEM_INSTRUCTION,
+
+                tools=tools,
+
+                previous_interaction_id=(
+                    previous_interaction_id
+                )
+            )
+
+        except Exception as error:
+
+            print(
+                f"Gemini continuation error: {error}"
+            )
+
+            return (
+                "The action was attempted, "
+                "but I couldn't complete the response."
+            )
+
+
+# =========================================================
+# COMMAND CLASSIFICATION
+# =========================================================
+
+def is_exit_command(command):
+
+    command = command.lower().strip()
+
+    exit_commands = [
+        "exit",
+        "quit",
+        "goodbye",
+        "shut down",
+        "shutdown",
+        "stop leo"
+    ]
+
+    return command in exit_commands
+
+
+def is_stop_command(command):
+
+    command = command.lower().strip()
+
+    stop_commands = [
+        "stop",
+        "stop speaking",
+        "be quiet",
+        "quiet",
+        "cancel speech"
+    ]
+
+    return command in stop_commands
+
+
+# =========================================================
 # STARTUP
-# ============================================================
+# =========================================================
 
 def startup():
 
-    print()
     print("=" * 60)
-    print("                 LEO AI ASSISTANT")
+
+    print(
+        "LEO 1.4 — Natural Voice + Agent Intelligence"
+    )
+
     print("=" * 60)
-    print()
-    print("Status: Online")
-    print("Voice: Ready")
-    print("Gemini: Connected")
-    print("Memory: Enabled")
-    print("Reminders: Enabled")
-    print("Conversation history: Enabled")
-    print()
+
+    print(
+        "Gemini: Connected"
+    )
+
+    print(
+        "Voice: Ready"
+    )
+
+    print(
+        "Reminders: Enabled"
+    )
+
+    print(
+        "Timers: Enabled"
+    )
+
+    print(
+        "Alarms: Enabled"
+    )
+
+    print(
+        "Memory: Enabled"
+    )
+
+    print(
+        "Conversation history: Enabled"
+    )
+
+    print(
+        "Preferences: Enabled"
+    )
+
     print("=" * 60)
-    print()
 
 
-# ============================================================
+# =========================================================
 # MAIN
-# ============================================================
+# =========================================================
 
 def main():
 
+    global conversation_active
+
     startup()
-
-    speak(
-        "Hello. I am Leo. "
-        "I am online and ready."
-    )
-
-
-    # --------------------------------------------------------
-    # START REMINDER MONITOR
-    # --------------------------------------------------------
 
     reminder_monitor = ReminderMonitor(
         reminder_callback
     )
 
+    timer_monitor = TimerMonitor(
+        timer_callback
+    )
+
+    alarm_monitor = AlarmMonitor(
+        alarm_callback
+    )
+
     reminder_monitor.start()
 
+    timer_monitor.start()
 
-    previous_interaction_id = None
+    alarm_monitor.start()
 
+    speak(
+        "LEO is online. How can I help you?"
+    )
 
     try:
 
-        while True:
+        while conversation_active:
 
-            command = wait_for_wake_word()
+            # ---------------------------------------------
+            # LISTEN
+            # ---------------------------------------------
 
-
-            if not command:
-
-                command = listen()
-
+            command = listen(
+                timeout=10,
+                phrase_time_limit=15
+            )
 
             if not command:
 
                 continue
 
+            normalized = normalize_command(
+                command
+            )
 
-            # ------------------------------------------------
+            if not normalized:
+
+                continue
+
+            # ---------------------------------------------
             # EXIT
-            # ------------------------------------------------
+            # ---------------------------------------------
 
-            if (
-
-                "exit" in command
-
-                or "quit" in command
-
-                or "goodbye" in command
-
-                or "shut down" in command
-
-            ):
+            if is_exit_command(normalized):
 
                 speak(
-                    "Goodbye. See you later."
+                    "Goodbye."
                 )
 
                 break
 
+            # ---------------------------------------------
+            # STOP SPEECH
+            # ---------------------------------------------
 
-            # ------------------------------------------------
-            # SAVE USER MESSAGE
-            # ------------------------------------------------
+            if is_stop_command(normalized):
+
+                engine.stop()
+
+                speak(
+                    "Okay."
+                )
+
+                continue
+
+            # ---------------------------------------------
+            # STORE USER MESSAGE
+            # ---------------------------------------------
 
             add_message(
                 "user",
-                command
+                normalized
             )
 
+            # ---------------------------------------------
+            # GEMINI
+            # ---------------------------------------------
 
-            # ------------------------------------------------
-            # ASK GEMINI
-            # ------------------------------------------------
+            response = ask_ai(
+                normalized
+            )
 
-            try:
+            # ---------------------------------------------
+            # STORE RESPONSE
+            # ---------------------------------------------
 
-                answer, previous_interaction_id = ask_ai(
+            add_message(
+                "assistant",
+                response
+            )
 
-                    command,
+            # ---------------------------------------------
+            # SPEAK
+            # ---------------------------------------------
 
-                    previous_interaction_id
+            speak(
+                response
+            )
 
-                )
+    except KeyboardInterrupt:
 
+        print(
+            "\nLEO stopped by user."
+        )
 
-                if answer:
+    except Exception as error:
 
-                    speak(
-                        answer
-                    )
-
-                    add_message(
-                        "leo",
-                        answer
-                    )
-
-                else:
-
-                    speak(
-                        "I couldn't generate a response."
-                    )
-
-
-            except Exception as e:
-
-                print(
-                    "\n[ERROR]",
-                    repr(e)
-                )
-
-                speak(
-                    "Sorry, something went wrong."
-                )
-
+        print(
+            f"\nUnexpected error: {error}"
+        )
 
     finally:
 
+        conversation_active = False
+
         reminder_monitor.stop()
 
+        timer_monitor.stop()
 
-# ============================================================
-# START
-# ============================================================
+        alarm_monitor.stop()
+
+        print(
+            "\nLEO has shut down."
+        )
+
+
+# =========================================================
+# ENTRY POINT
+# =========================================================
 
 if __name__ == "__main__":
 
