@@ -10,7 +10,9 @@ from google import genai
 from tools.basic_tools import (
     open_website,
     get_time,
-    calculate
+    get_date,
+    calculate,
+    get_weather
 )
 
 from memory import (
@@ -26,9 +28,12 @@ from memory import (
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY"
+)
 
 if not GEMINI_API_KEY:
+
     raise ValueError(
         "GEMINI_API_KEY was not found in your .env file."
     )
@@ -44,7 +49,7 @@ client = genai.Client(
 
 
 # ============================================================
-# LEO PERSONALITY / SYSTEM INSTRUCTION
+# LEO PERSONALITY
 # ============================================================
 
 SYSTEM_INSTRUCTION = """
@@ -54,87 +59,145 @@ Your name is LEO.
 
 You are helpful, concise, friendly, and natural.
 
-Your responses will be spoken aloud, so avoid:
-- Long explanations
-- Excessive formatting
+Your responses will be spoken aloud.
+
+Keep responses short and conversational.
+
+Avoid:
 - Markdown
-- Unnecessary lists
+- Long explanations
+- Excessive lists
+- Unnecessary formatting
 
-Keep normal responses short and conversational.
 
-------------------------------------------------------------
-WEB SEARCH
-------------------------------------------------------------
+============================================================
+GOOGLE SEARCH
+============================================================
 
 You have access to Google Search.
 
 Use Google Search when the user asks for:
-- Current information
+
 - Latest news
-- Recent events
+- Current events
+- Recent developments
+- Current information
 - Current prices
-- Recent technology developments
-- Recent people or company information
+- Recent technology news
+- Recent company information
 - Information that may have changed recently
-- Real-time or up-to-date facts
+
+For example:
+
+"Leo, what is the latest AI news?"
+
+"Leo, what happened in technology today?"
+
+"Leo, what are the latest developments in Gemini?"
 
 Do not use search unnecessarily for simple general questions.
 
-------------------------------------------------------------
-CUSTOM TOOLS
-------------------------------------------------------------
 
-You have access to custom Python tools.
+============================================================
+WEATHER
+============================================================
 
-Use the appropriate tool when the user asks you to perform
-an action that a tool can handle.
+You have a weather tool.
 
-If a tool can perform an action, perform the action instead
-of simply explaining how the user could do it.
+Use the weather tool when the user asks about:
 
-Never claim that an action was performed unless the tool was
-actually executed successfully.
+- Current weather
+- Temperature
+- Humidity
+- Rain
+- Wind
+- Weather conditions
+- How the weather feels
 
-------------------------------------------------------------
+If the user specifies a city, use that city.
+
+For example:
+
+"What's the weather in Rawalpindi?"
+
+"What's the temperature in London?"
+
+"How is the weather in Dubai?"
+
+Do not guess weather information.
+
+
+============================================================
+DATE AND TIME
+============================================================
+
+Use the time tool when the user asks for the current time.
+
+Use the date tool when the user asks for today's date.
+
+
+============================================================
+WEBSITES
+============================================================
+
+Use the website tool when the user asks you to open:
+
+- Google
+- YouTube
+- LinkedIn
+- Facebook
+- GitHub
+
+
+============================================================
+CALCULATOR
+============================================================
+
+Use the calculator when the user asks for mathematical
+calculations.
+
+
+============================================================
 PERSISTENT MEMORY
-------------------------------------------------------------
+============================================================
 
-You have access to persistent local memory.
+You have persistent local memory.
 
 Only save information when the user explicitly asks you
-to remember, save, or keep something for later.
+to remember or save it.
 
-Examples:
+When the user says:
 
-"Remember that my favorite language is Python."
+"Remember that..."
 
-"Leo, remember that my project is called LEO."
-
-When the user explicitly asks you to remember something,
 use the remember_fact tool.
 
-When the user explicitly asks you to forget something,
+When the user asks you to forget something,
 use the forget_fact tool.
 
 When the user asks about information that may have been
 saved previously, use the get_memory tool.
 
-Do not invent memories.
+Never invent memories.
 
-Do not claim to remember something unless it was actually
-saved.
+Never claim that something was saved unless the memory
+tool actually executed successfully.
 
-------------------------------------------------------------
+
+============================================================
 GENERAL BEHAVIOR
-------------------------------------------------------------
+============================================================
 
-Answer normal questions naturally.
+If a tool can perform an action, use the tool.
 
-If the user asks something that does not require a tool,
+Never claim an action was completed if the tool was not
+actually executed.
+
+For normal questions that don't require a tool,
 answer directly.
 
-You are a voice assistant, so prioritize short,
-clear, natural spoken responses.
+You are a voice assistant, so keep spoken responses natural
+and reasonably short.
 """
 
 
@@ -146,14 +209,14 @@ engine = pyttsx3.init()
 
 
 def speak(text):
-    """
-    Convert text into spoken audio.
-    """
 
     if not text:
         return
 
-    print("LEO:", text)
+    print(
+        "LEO:",
+        text
+    )
 
     engine.say(text)
 
@@ -165,15 +228,14 @@ def speak(text):
 # ============================================================
 
 def listen():
-    """
-    Listen through the microphone and convert speech to text.
-    """
 
     recognizer = sr.Recognizer()
 
     with sr.Microphone() as source:
 
-        print("\nListening...")
+        print(
+            "\nListening..."
+        )
 
         recognizer.adjust_for_ambient_noise(
             source,
@@ -190,23 +252,32 @@ def listen():
 
         except sr.WaitTimeoutError:
 
-            print("No speech detected.")
+            print(
+                "No speech detected."
+            )
 
             return ""
 
 
     try:
 
-        text = recognizer.recognize_google(audio)
+        text = recognizer.recognize_google(
+            audio
+        )
 
-        print("You:", text)
+        print(
+            "You:",
+            text
+        )
 
         return text.lower()
 
 
     except sr.UnknownValueError:
 
-        print("LEO couldn't understand you.")
+        print(
+            "LEO couldn't understand you."
+        )
 
         return ""
 
@@ -226,56 +297,41 @@ def listen():
 
 
 # ============================================================
-# WAKE WORD DETECTION
+# WAKE WORD
 # ============================================================
 
 def wait_for_wake_word():
-    """
-    Wait until the user says 'Leo'.
-    """
 
     while True:
 
         command = listen()
 
         if not command:
+
             continue
 
         if "leo" in command:
 
-            # Remove only the first occurrence
-            # of the wake word.
             command = command.replace(
                 "leo",
                 "",
                 1
             ).strip()
 
-            # Example:
-            # "Leo open YouTube"
-            #
-            # becomes:
-            # "open youtube"
-
             if command:
 
                 return command
 
-            # User only said:
-            # "Leo"
-
-            speak("Yes?")
+            speak(
+                "Yes?"
+            )
 
             return ""
 
 
 # ============================================================
-# CUSTOM TOOL DEFINITIONS
+# WEBSITE TOOL DEFINITION
 # ============================================================
-
-# ------------------------------------------------------------
-# OPEN WEBSITE
-# ------------------------------------------------------------
 
 open_website_tool = {
 
@@ -299,14 +355,11 @@ open_website_tool = {
                 "type": "string",
 
                 "description": (
-                    "The website to open. "
-                    "Supported websites are "
-                    "google, youtube, linkedin, "
+                    "Website name. Supported websites "
+                    "are google, youtube, linkedin, "
                     "facebook, and github."
                 )
-
             }
-
         },
 
         "required": [
@@ -316,9 +369,9 @@ open_website_tool = {
 }
 
 
-# ------------------------------------------------------------
-# GET TIME
-# ------------------------------------------------------------
+# ============================================================
+# TIME TOOL DEFINITION
+# ============================================================
 
 get_time_tool = {
 
@@ -341,9 +394,34 @@ get_time_tool = {
 }
 
 
-# ------------------------------------------------------------
-# CALCULATE
-# ------------------------------------------------------------
+# ============================================================
+# DATE TOOL DEFINITION
+# ============================================================
+
+get_date_tool = {
+
+    "type": "function",
+
+    "name": "get_date",
+
+    "description": (
+        "Get the current local date."
+    ),
+
+    "parameters": {
+
+        "type": "object",
+
+        "properties": {},
+
+        "required": []
+    }
+}
+
+
+# ============================================================
+# CALCULATOR TOOL DEFINITION
+# ============================================================
 
 calculate_tool = {
 
@@ -366,12 +444,10 @@ calculate_tool = {
                 "type": "string",
 
                 "description": (
-                    "A mathematical expression such as "
-                    "25 * 4, 100 / 5, or 10 + 20."
+                    "Mathematical expression such as "
+                    "25 * 4 or 100 / 5."
                 )
-
             }
-
         },
 
         "required": [
@@ -381,9 +457,48 @@ calculate_tool = {
 }
 
 
-# ------------------------------------------------------------
-# REMEMBER FACT
-# ------------------------------------------------------------
+# ============================================================
+# WEATHER TOOL DEFINITION
+# ============================================================
+
+weather_tool = {
+
+    "type": "function",
+
+    "name": "get_weather",
+
+    "description": (
+        "Get the current weather for a specified city "
+        "or location."
+    ),
+
+    "parameters": {
+
+        "type": "object",
+
+        "properties": {
+
+            "location": {
+
+                "type": "string",
+
+                "description": (
+                    "The city or location for which "
+                    "the user wants current weather."
+                )
+            }
+        },
+
+        "required": [
+            "location"
+        ]
+    }
+}
+
+
+# ============================================================
+# MEMORY TOOL DEFINITIONS
+# ============================================================
 
 remember_fact_tool = {
 
@@ -407,10 +522,7 @@ remember_fact_tool = {
                 "type": "string",
 
                 "description": (
-                    "The category of information, "
-                    "such as favorite language, "
-                    "favorite color, project name, "
-                    "or preferred editor."
+                    "Category of information."
                 )
             },
 
@@ -419,10 +531,9 @@ remember_fact_tool = {
                 "type": "string",
 
                 "description": (
-                    "The information that should be remembered."
+                    "Information that should be remembered."
                 )
             }
-
         },
 
         "required": [
@@ -433,10 +544,6 @@ remember_fact_tool = {
 }
 
 
-# ------------------------------------------------------------
-# FORGET FACT
-# ------------------------------------------------------------
-
 forget_fact_tool = {
 
     "type": "function",
@@ -444,8 +551,7 @@ forget_fact_tool = {
     "name": "forget_fact",
 
     "description": (
-        "Delete a previously saved personal fact "
-        "when the user asks LEO to forget it."
+        "Delete a previously saved personal fact."
     ),
 
     "parameters": {
@@ -459,10 +565,9 @@ forget_fact_tool = {
                 "type": "string",
 
                 "description": (
-                    "The category of information to forget."
+                    "Category of information to forget."
                 )
             }
-
         },
 
         "required": [
@@ -472,10 +577,6 @@ forget_fact_tool = {
 }
 
 
-# ------------------------------------------------------------
-# GET MEMORY
-# ------------------------------------------------------------
-
 get_memory_tool = {
 
     "type": "function",
@@ -484,7 +585,7 @@ get_memory_tool = {
 
     "description": (
         "Retrieve a personal fact previously saved "
-        "in LEO's persistent local memory."
+        "in LEO's persistent memory."
     ),
 
     "parameters": {
@@ -498,10 +599,9 @@ get_memory_tool = {
                 "type": "string",
 
                 "description": (
-                    "The category of memory to retrieve."
+                    "Category of memory to retrieve."
                 )
             }
-
         },
 
         "required": [
@@ -517,19 +617,27 @@ get_memory_tool = {
 
 tools = [
 
-    # Built-in Gemini tool
+    # Built-in Gemini Search
     {
         "type": "google_search"
     },
 
-    # Custom Python tools
+    # Browser
     open_website_tool,
 
+    # Time
     get_time_tool,
 
+    # Date
+    get_date_tool,
+
+    # Calculator
     calculate_tool,
 
-    # Persistent memory tools
+    # Weather
+    weather_tool,
+
+    # Memory
     remember_fact_tool,
 
     forget_fact_tool,
@@ -542,10 +650,10 @@ tools = [
 # TOOL EXECUTION
 # ============================================================
 
-def execute_tool(name, arguments):
-    """
-    Execute the Python function requested by Gemini.
-    """
+def execute_tool(
+    name,
+    arguments
+):
 
     print(
         f"\n[TOOL] {name}"
@@ -557,7 +665,7 @@ def execute_tool(name, arguments):
 
 
     # --------------------------------------------------------
-    # OPEN WEBSITE
+    # WEBSITE
     # --------------------------------------------------------
 
     if name == "open_website":
@@ -568,7 +676,7 @@ def execute_tool(name, arguments):
 
 
     # --------------------------------------------------------
-    # GET TIME
+    # TIME
     # --------------------------------------------------------
 
     elif name == "get_time":
@@ -577,13 +685,33 @@ def execute_tool(name, arguments):
 
 
     # --------------------------------------------------------
-    # CALCULATE
+    # DATE
+    # --------------------------------------------------------
+
+    elif name == "get_date":
+
+        return get_date()
+
+
+    # --------------------------------------------------------
+    # CALCULATOR
     # --------------------------------------------------------
 
     elif name == "calculate":
 
         return calculate(
             arguments["expression"]
+        )
+
+
+    # --------------------------------------------------------
+    # WEATHER
+    # --------------------------------------------------------
+
+    elif name == "get_weather":
+
+        return get_weather(
+            arguments["location"]
         )
 
 
@@ -633,10 +761,6 @@ def execute_tool(name, arguments):
         )
 
 
-    # --------------------------------------------------------
-    # UNKNOWN TOOL
-    # --------------------------------------------------------
-
     return "Unknown tool."
 
 
@@ -648,18 +772,9 @@ def ask_ai(
     command,
     previous_interaction_id=None
 ):
-    """
-    Send the user's command to Gemini.
-
-    Gemini can:
-    - Answer normally
-    - Search the web
-    - Call our Python tools
-    - Use persistent memory
-    """
 
     # --------------------------------------------------------
-    # FIRST GEMINI REQUEST
+    # CREATE INTERACTION
     # --------------------------------------------------------
 
     interaction = client.interactions.create(
@@ -689,18 +804,17 @@ def ask_ai(
         function_calls = []
 
 
-        # Find all custom function calls
-        # requested by Gemini.
-
         for step in interaction.steps:
 
             if step.type == "function_call":
 
-                function_calls.append(step)
+                function_calls.append(
+                    step
+                )
 
 
         # ----------------------------------------------------
-        # NO CUSTOM FUNCTION CALL
+        # NORMAL GEMINI RESPONSE
         # ----------------------------------------------------
 
         if not function_calls:
@@ -712,7 +826,7 @@ def ask_ai(
 
 
         # ----------------------------------------------------
-        # EXECUTE FUNCTION CALLS
+        # EXECUTE TOOLS
         # ----------------------------------------------------
 
         function_results = []
@@ -725,9 +839,6 @@ def ask_ai(
                 arguments = step.arguments
 
 
-                # Sometimes arguments can arrive
-                # as a JSON string.
-
                 if isinstance(
                     arguments,
                     str
@@ -738,8 +849,6 @@ def ask_ai(
                     )
 
 
-                # Execute the requested Python tool.
-
                 result = execute_tool(
                     step.name,
                     arguments
@@ -747,11 +856,10 @@ def ask_ai(
 
 
                 print(
-                    f"[RESULT] {result}"
+                    "[RESULT]",
+                    result
                 )
 
-
-                # Prepare result for Gemini.
 
                 function_results.append({
 
@@ -781,7 +889,7 @@ def ask_ai(
             except Exception as error:
 
                 print(
-                    "\n[TOOL ERROR]",
+                    "[TOOL ERROR]",
                     repr(error)
                 )
 
@@ -812,7 +920,7 @@ def ask_ai(
 
 
         # ----------------------------------------------------
-        # SEND TOOL RESULTS BACK TO GEMINI
+        # SEND RESULTS BACK TO GEMINI
         # ----------------------------------------------------
 
         interaction = client.interactions.create(
@@ -839,36 +947,26 @@ def ask_ai(
 
 def main():
 
-    # --------------------------------------------------------
-    # STARTUP
-    # --------------------------------------------------------
-
     speak(
         "Hello. I am Leo. "
         "I am ready."
     )
 
 
-    # This keeps the current Gemini conversation alive.
-
     previous_interaction_id = None
 
-
-    # --------------------------------------------------------
-    # MAIN LOOP
-    # --------------------------------------------------------
 
     while True:
 
         # ----------------------------------------------------
-        # WAIT FOR LEO
+        # WAIT FOR WAKE WORD
         # ----------------------------------------------------
 
         command = wait_for_wake_word()
 
 
         # ----------------------------------------------------
-        # USER ONLY SAID "LEO"
+        # USER ONLY SAID LEO
         # ----------------------------------------------------
 
         if not command:
@@ -882,7 +980,7 @@ def main():
 
 
         # ----------------------------------------------------
-        # EXIT COMMANDS
+        # EXIT
         # ----------------------------------------------------
 
         if (
@@ -900,7 +998,7 @@ def main():
 
 
         # ----------------------------------------------------
-        # SEND COMMAND TO GEMINI
+        # GEMINI
         # ----------------------------------------------------
 
         try:
@@ -914,13 +1012,11 @@ def main():
             )
 
 
-            # ------------------------------------------------
-            # SPEAK RESPONSE
-            # ------------------------------------------------
-
             if answer:
 
-                speak(answer)
+                speak(
+                    answer
+                )
 
             else:
 
