@@ -1,26 +1,26 @@
+# =========================================================
+# LEO - Persistent User Preferences
+# =========================================================
+
 import json
-import os
+
+from pathlib import Path
 
 
-PREFERENCES_FILE = "preferences.json"
+PREFERENCES_FILE = Path(
+    "preferences.json"
+)
 
 
-DEFAULT_PREFERENCES = {
-    "name": "User",
-    "assistant_name": "LEO",
-    "default_location": "",
-    "voice_speed": 175,
-    "continuous_mode": True
-}
-
+# =========================================================
+# STORAGE
+# =========================================================
 
 def load_preferences():
 
-    if not os.path.exists(PREFERENCES_FILE):
+    if not PREFERENCES_FILE.exists():
 
-        save_preferences(DEFAULT_PREFERENCES.copy())
-
-        return DEFAULT_PREFERENCES.copy()
+        return {}
 
     try:
 
@@ -30,64 +30,90 @@ def load_preferences():
             encoding="utf-8"
         ) as file:
 
-            preferences = json.load(file)
+            return json.load(file)
 
-        merged = DEFAULT_PREFERENCES.copy()
-        merged.update(preferences)
+    except Exception:
 
-        return merged
-
-    except (json.JSONDecodeError, OSError):
-
-        return DEFAULT_PREFERENCES.copy()
+        return {}
 
 
-def save_preferences(preferences):
+def save_preferences(
+    preferences
+):
 
-    try:
+    with open(
+        PREFERENCES_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
 
-        with open(
-            PREFERENCES_FILE,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                preferences,
-                file,
-                indent=4
-            )
-
-        return True
-
-    except OSError:
-
-        return False
+        json.dump(
+            preferences,
+            file,
+            indent=4
+        )
 
 
-def set_preference(key, value):
+# =========================================================
+# SET
+# =========================================================
+
+def set_preference(
+    key,
+    value
+):
+
+    if not key:
+
+        return "Preference name cannot be empty."
 
     preferences = load_preferences()
 
-    preferences[key] = value
+    preferences[
+        str(key).strip()
+    ] = str(value)
 
-    save_preferences(preferences)
+    save_preferences(
+        preferences
+    )
 
     return (
-        f"Preference '{key}' has been set to '{value}'."
+        f"Preference '{key}' has been saved."
     )
 
 
+# =========================================================
+# GET
+# =========================================================
+
 def get_preference(key):
+
+    if not key:
+
+        return "No preference name was provided."
 
     preferences = load_preferences()
 
-    return preferences.get(key)
+    if key not in preferences:
 
+        return (
+            f"No preference named '{key}' was found."
+        )
+
+    return preferences[key]
+
+
+# =========================================================
+# GET ALL
+# =========================================================
 
 def get_all_preferences():
 
     preferences = load_preferences()
+
+    if not preferences:
+
+        return "There are no saved preferences."
 
     lines = []
 
@@ -100,10 +126,12 @@ def get_all_preferences():
     return "\n".join(lines)
 
 
+# =========================================================
+# RESET
+# =========================================================
+
 def reset_preferences():
 
-    save_preferences(
-        DEFAULT_PREFERENCES.copy()
-    )
+    save_preferences({})
 
-    return "Preferences have been reset."
+    return "All preferences have been reset."
