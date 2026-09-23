@@ -1,6 +1,7 @@
+
 # =========================================================
-# LEO 1.5
-# Advanced Desktop Control + Smart Context
+# LEO 2.0
+# Advanced Desktop Control + Smart Context + Agent Workflows
 # =========================================================
 
 import os
@@ -82,6 +83,10 @@ from preferences import (
 
 from session_context import (
     SessionContext,
+)
+
+from agent_workflows import (
+    run_workflow,
 )
 
 
@@ -256,6 +261,52 @@ Examples:
 "call me Mobeen"
 "my default location is Rawalpindi"
 "set my voice speed to 160"
+
+WORKFLOWS:
+
+You can perform predefined multi-step workflows.
+
+If the user asks you to prepare a coding workspace,
+use run_workflow with "coding".
+
+Examples:
+
+"prepare my coding workspace"
+"set up my development workspace"
+"open my coding environment"
+
+If the user asks you to prepare an AI or machine
+learning workspace, use run_workflow with "AI".
+
+Examples:
+
+"prepare my AI workspace"
+"set up my machine learning workspace"
+"open my AI environment"
+
+If the user asks you to prepare a research workspace,
+use run_workflow with "research".
+
+Examples:
+
+"prepare a research workspace"
+"set up my research environment"
+
+If the user asks you to prepare a study workspace,
+use run_workflow with "study".
+
+Examples:
+
+"prepare my study workspace"
+"set up my study environment"
+
+A workflow performs several safe desktop actions
+in sequence.
+
+Do not claim that a workflow succeeded if its result
+reports an error.
+
+Do not invent workflow results.
 
 SAFETY:
 
@@ -1104,6 +1155,31 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {}
         }
+    },
+
+    # -----------------------------------------------------
+    # AGENT WORKFLOWS
+    # -----------------------------------------------------
+
+    {
+        "name": "run_workflow",
+        "description": (
+            "Run a predefined multi-step desktop workflow. "
+            "Available workflows are coding, AI, research and study."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow": {
+                    "type": "string",
+                    "description": (
+                        "Workflow name such as coding, AI, "
+                        "research or study."
+                    )
+                }
+            },
+            "required": ["workflow"]
+        }
     }
 ]
 
@@ -1141,9 +1217,17 @@ def execute_tool(
 
     try:
 
+        # -------------------------------------------------
+        # WEB
+        # -------------------------------------------------
+
         if tool_name == "open_website":
 
             result = open_website(
+                arguments.get("website")
+            )
+
+            session.set_website(
                 arguments.get("website")
             )
 
@@ -1155,14 +1239,22 @@ def execute_tool(
                 arguments.get("query")
             )
 
+        # -------------------------------------------------
+        # APPLICATIONS
+        # -------------------------------------------------
+
         if tool_name == "open_application":
 
+            application = arguments.get(
+                "application"
+            )
+
             result = open_application(
-                arguments.get("application")
+                application
             )
 
             session.set_application(
-                arguments.get("application")
+                application
             )
 
             return result
@@ -1183,9 +1275,19 @@ def execute_tool(
 
         if tool_name == "open_folder":
 
-            return open_folder(
-                arguments.get("folder")
+            folder = arguments.get(
+                "folder"
             )
+
+            result = open_folder(
+                folder
+            )
+
+            return result
+
+        # -------------------------------------------------
+        # TIME
+        # -------------------------------------------------
 
         if tool_name == "get_time":
 
@@ -1195,11 +1297,19 @@ def execute_tool(
 
             return get_date()
 
+        # -------------------------------------------------
+        # CALCULATION
+        # -------------------------------------------------
+
         if tool_name == "calculate":
 
             return calculate(
                 arguments.get("expression")
             )
+
+        # -------------------------------------------------
+        # WEATHER
+        # -------------------------------------------------
 
         if tool_name == "get_weather":
 
@@ -1215,6 +1325,10 @@ def execute_tool(
                 location
             )
 
+        # -------------------------------------------------
+        # SYSTEM
+        # -------------------------------------------------
+
         if tool_name == "take_screenshot":
 
             return take_screenshot()
@@ -1226,6 +1340,10 @@ def execute_tool(
         if tool_name == "get_battery_status":
 
             return get_battery_status()
+
+        # -------------------------------------------------
+        # VOLUME
+        # -------------------------------------------------
 
         if tool_name == "volume_up":
 
@@ -1245,6 +1363,10 @@ def execute_tool(
                 arguments.get("level")
             )
 
+        # -------------------------------------------------
+        # MEDIA
+        # -------------------------------------------------
+
         if tool_name == "media_play_pause":
 
             return media_play_pause()
@@ -1257,9 +1379,17 @@ def execute_tool(
 
             return media_previous()
 
+        # -------------------------------------------------
+        # WINDOWS
+        # -------------------------------------------------
+
         if tool_name == "lock_windows":
 
             return lock_windows()
+
+        # -------------------------------------------------
+        # FILES
+        # -------------------------------------------------
 
         if tool_name == "search_files":
 
@@ -1286,6 +1416,10 @@ def execute_tool(
             return read_text_file(
                 filepath
             )
+
+        # -------------------------------------------------
+        # CLIPBOARD
+        # -------------------------------------------------
 
         if tool_name == "get_clipboard":
 
@@ -1434,6 +1568,30 @@ def execute_tool(
 
             return reset_preferences()
 
+        # -------------------------------------------------
+        # AGENT WORKFLOWS
+        # -------------------------------------------------
+
+        if tool_name == "run_workflow":
+
+            workflow = arguments.get(
+                "workflow"
+            )
+
+            print(
+                f"\n[WORKFLOW] {workflow}"
+            )
+
+            result = run_workflow(
+                workflow
+            )
+
+            return result
+
+        # -------------------------------------------------
+        # UNKNOWN TOOL
+        # -------------------------------------------------
+
         return (
             f"Unknown tool: {tool_name}"
         )
@@ -1543,6 +1701,10 @@ CURRENT USER REQUEST:
                 f"[OUTPUT ERROR] {error}"
             )
 
+        # -------------------------------------------------
+        # NORMAL RESPONSE
+        # -------------------------------------------------
+
         if not function_calls:
 
             try:
@@ -1562,6 +1724,10 @@ CURRENT USER REQUEST:
             except Exception:
 
                 return "I'm ready."
+
+        # -------------------------------------------------
+        # EXECUTE FUNCTION CALLS
+        # -------------------------------------------------
 
         function_results = []
 
@@ -1605,6 +1771,10 @@ CURRENT USER REQUEST:
                 }
             )
 
+        # -------------------------------------------------
+        # CONTINUE GEMINI INTERACTION
+        # -------------------------------------------------
+
         try:
 
             interaction = client.interactions.create(
@@ -1641,11 +1811,18 @@ CURRENT USER REQUEST:
 def startup():
 
     print()
-    print("=" * 65)
+
     print(
-        "LEO 1.5 - Advanced Desktop Control + Smart Context"
+        "=" * 70
     )
-    print("=" * 65)
+
+    print(
+        "LEO 2.0 - Agentic Desktop Assistant"
+    )
+
+    print(
+        "=" * 70
+    )
 
     print(
         "Gemini: Connected"
@@ -1699,7 +1876,14 @@ def startup():
         "Preferences: Enabled"
     )
 
-    print("=" * 65)
+    print(
+        "Agent workflows: Enabled"
+    )
+
+    print(
+        "=" * 70
+    )
+
     print()
 
 
@@ -1851,3 +2035,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
