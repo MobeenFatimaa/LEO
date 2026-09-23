@@ -1,6 +1,9 @@
+# =========================================================
+# LEO 1.5
+# Advanced Desktop Control + Smart Context
+# =========================================================
+
 import os
-import time
-import threading
 
 import speech_recognition as sr
 import pyttsx3
@@ -10,7 +13,9 @@ from google import genai
 
 from tools.basic_tools import (
     open_website,
+    search_web,
     open_application,
+    close_application,
     open_vscode,
     open_folder,
     get_time,
@@ -23,10 +28,16 @@ from tools.basic_tools import (
     volume_up,
     volume_down,
     mute_volume,
+    set_volume_level,
+    media_play_pause,
+    media_next,
+    media_previous,
     lock_windows,
     search_files,
     create_note,
     read_text_file,
+    get_clipboard,
+    set_clipboard,
 )
 
 from memory import (
@@ -69,6 +80,10 @@ from preferences import (
     reset_preferences,
 )
 
+from session_context import (
+    SessionContext,
+)
+
 
 # =========================================================
 # ENVIRONMENT
@@ -76,7 +91,9 @@ from preferences import (
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY"
+)
 
 if not GEMINI_API_KEY:
 
@@ -91,7 +108,7 @@ client = genai.Client(
 
 
 # =========================================================
-# VOICE ENGINE
+# VOICE
 # =========================================================
 
 engine = pyttsx3.init()
@@ -108,16 +125,12 @@ engine.setProperty(
 
 
 # =========================================================
-# GLOBAL STATE
+# STATE
 # =========================================================
 
 previous_interaction_id = None
 
-conversation_active = True
-
-speaking = False
-
-stop_requested = False
+session = SessionContext()
 
 
 # =========================================================
@@ -127,124 +140,156 @@ stop_requested = False
 SYSTEM_INSTRUCTION = """
 You are LEO, a personal Windows desktop voice assistant.
 
-You are conversational, concise, helpful, and natural.
+Your job is to understand natural spoken language and
+perform useful actions on the user's Windows computer.
 
-The user communicates with you primarily through voice.
+You should behave like a conversational assistant.
 
-IMPORTANT BEHAVIOR:
+IMPORTANT:
 
-1. Understand natural language.
-2. Do not require exact commands.
-3. Use tools when a real action is requested.
-4. Never claim an action succeeded if the tool failed.
-5. If a tool returns an error, explain it briefly.
-6. Remember information when the user explicitly asks you to remember it.
-7. Use conversation history for follow-up questions.
-8. Maintain conversational context.
-9. Use Google Search when current web information is required.
-10. Do not invent current information.
-11. Prefer short spoken responses.
-12. Avoid unnecessary long explanations.
+- Understand natural language.
+- Do not require exact command wording.
+- Use tools when the user requests an actual action.
+- Never claim an action succeeded if the tool failed.
+- Never invent tool results.
+- Keep spoken responses concise.
+- Use previous conversation context.
+- Use current session context.
+- Use Google Search for current web information.
+- Ask for clarification when a requested action is ambiguous.
 
-CONTEXTUAL COMMANDS:
+CONTEXT:
 
-Understand commands such as:
+The user may say:
 
 "open it"
-"close that"
+"close it"
 "search that"
-"remember this"
-"what did I just say?"
-"do that again"
+"read that"
 "what about tomorrow?"
-"cancel it"
-"show me my reminders"
-"set one for later"
+"what about Lahore?"
+"do it again"
+"cancel that"
+"show me that"
+"remember this"
 
-Use previous conversation context when interpreting these.
+Use the provided context to understand references.
 
-TIME:
+APPLICATIONS:
 
-Understand natural timer requests:
+The user may ask you to open or close applications.
 
-"set a timer for 5 minutes"
-"timer for 30 seconds"
-"remind me in 2 hours"
+Use open_application or close_application.
 
-For timers, use create_timer.
+Do not invent applications that are not supported.
 
-ALARMS:
+WEBSITES:
 
-Understand:
+Use open_website for direct websites.
 
-"set an alarm for 7 AM"
-"wake me up at 6:30"
-"set my daily alarm for 8 AM"
+Use search_web when the user wants a browser search.
 
-Use create_alarm.
+For questions requiring current information, use Google Search.
 
-REMINDERS:
+MEDIA:
 
-For date/time reminders use create_reminder.
+Use media_play_pause, media_next or media_previous
+for media control.
 
-MEMORY:
+VOLUME:
 
-Use remember_fact when the user explicitly tells you to remember something.
-
-Use get_memory when the user asks what you remember.
-
-Use forget_fact when the user asks you to forget something.
-
-PREFERENCES:
-
-The user may tell you preferences such as:
-
-"my name is..."
-"call me..."
-"my default location is..."
-"set my voice speed..."
-
-Use preference tools.
-
-WINDOWS:
-
-You can open websites, applications, folders, VS Code,
-take screenshots, control volume, lock Windows, inspect
-system information and battery status.
+Use volume_up, volume_down, mute_volume or set_volume_level.
 
 FILES:
 
-You can search files, create notes and read supported text files.
+Use search_files, read_text_file and create_note.
+
+CLIPBOARD:
+
+Use get_clipboard when the user explicitly asks about
+their clipboard.
+
+Use set_clipboard when the user asks you to put text
+into the clipboard.
+
+MEMORY:
+
+Use remember_fact only when the user explicitly asks
+you to remember something.
+
+Use get_memory when the user asks what you remember.
+
+Use forget_fact when requested.
+
+REMINDERS:
+
+Use create_reminder for calendar-like future reminders.
+
+TIMERS:
+
+Use create_timer for countdowns.
+
+Examples:
+
+"timer for 30 seconds"
+"timer for 5 minutes"
+"remind me in 2 hours"
+
+Convert durations into seconds.
+
+ALARMS:
+
+Use create_alarm for daily repeating alarms.
+
+Example:
+
+"wake me at 7 AM"
+
+Convert the time to 24-hour HH:MM format.
+
+PREFERENCES:
+
+Use preference tools for persistent preferences.
+
+Examples:
+
+"call me Mobeen"
+"my default location is Rawalpindi"
+"set my voice speed to 160"
 
 SAFETY:
 
-Do not perform destructive or dangerous actions unless
-the user explicitly requests them and the tool supports them.
+Do not execute arbitrary shell commands.
 
-Keep spoken responses concise.
+Do not delete arbitrary files.
+
+Do not terminate arbitrary processes.
+
+Only use supported tools.
+
+Keep responses natural and concise.
 """
 
 
 # =========================================================
-# SPEAK
+# SPEECH
 # =========================================================
 
 def speak(text):
 
-    global speaking
-    global stop_requested
-
     if not text:
+
         return
 
-    speaking = True
-    stop_requested = False
-
-    print(f"LEO: {text}")
+    print(
+        f"LEO: {text}"
+    )
 
     try:
 
-        engine.say(text)
+        engine.say(
+            text
+        )
 
         engine.runAndWait()
 
@@ -253,10 +298,6 @@ def speak(text):
         print(
             f"Speech error: {error}"
         )
-
-    finally:
-
-        speaking = False
 
 
 # =========================================================
@@ -270,17 +311,22 @@ recognizer.energy_threshold = 300
 recognizer.dynamic_energy_threshold = True
 
 
-def listen(timeout=5, phrase_time_limit=12):
+def listen(
+    timeout=10,
+    phrase_time_limit=15
+):
 
-    with sr.Microphone() as source:
+    try:
 
-        try:
+        with sr.Microphone() as source:
 
-            print("\nListening...")
+            print(
+                "\nListening..."
+            )
 
             recognizer.adjust_for_ambient_noise(
                 source,
-                duration=0.5
+                duration=0.4
             )
 
             audio = recognizer.listen(
@@ -289,17 +335,17 @@ def listen(timeout=5, phrase_time_limit=12):
                 phrase_time_limit=phrase_time_limit
             )
 
-        except sr.WaitTimeoutError:
+    except sr.WaitTimeoutError:
 
-            return ""
+        return ""
 
-        except Exception as error:
+    except Exception as error:
 
-            print(
-                f"Microphone error: {error}"
-            )
+        print(
+            f"Microphone error: {error}"
+        )
 
-            return ""
+        return ""
 
     try:
 
@@ -309,9 +355,11 @@ def listen(timeout=5, phrase_time_limit=12):
 
         text = text.strip()
 
-        print(
-            f"You: {text}"
-        )
+        if text:
+
+            print(
+                f"You: {text}"
+            )
 
         return text
 
@@ -334,13 +382,17 @@ def listen(timeout=5, phrase_time_limit=12):
 
 def normalize_command(command):
 
+    if not command:
+
+        return ""
+
     command = command.strip()
 
     prefixes = [
-        "leo",
         "hey leo",
         "okay leo",
         "ok leo",
+        "leo",
     ]
 
     lower = command.lower()
@@ -349,42 +401,41 @@ def normalize_command(command):
 
         if lower.startswith(prefix):
 
-            command = command[
+            return command[
                 len(prefix):
             ].strip()
-
-            break
 
     return command
 
 
 # =========================================================
-# WAKE WORD
+# EXIT / SPECIAL COMMANDS
 # =========================================================
 
-def wait_for_wake_word():
+def is_exit_command(command):
 
-    print(
-        "\nWaiting for wake word: LEO..."
-    )
+    command = command.lower().strip()
 
-    while True:
+    return command in {
+        "exit",
+        "quit",
+        "goodbye",
+        "shutdown leo",
+        "shut down leo",
+        "stop leo"
+    }
 
-        command = listen(
-            timeout=5,
-            phrase_time_limit=8
-        )
 
-        if not command:
-            continue
+def is_clear_context_command(command):
 
-        lower = command.lower()
+    command = command.lower().strip()
 
-        if "leo" in lower:
-
-            return normalize_command(
-                command
-            )
+    return command in {
+        "clear context",
+        "forget this conversation",
+        "reset context",
+        "start fresh"
+    }
 
 
 # =========================================================
@@ -397,7 +448,7 @@ def reminder_callback(
 ):
 
     print(
-        f"\nREMINDER: {message}"
+        f"\n[REMINDER] {message}"
     )
 
     speak(
@@ -415,7 +466,7 @@ def timer_callback(
 ):
 
     print(
-        f"\nTIMER FINISHED: {message}"
+        f"\n[TIMER] {message}"
     )
 
     speak(
@@ -433,7 +484,7 @@ def alarm_callback(
 ):
 
     print(
-        f"\nALARM: {message}"
+        f"\n[ALARM] {message}"
     )
 
     speak(
@@ -447,9 +498,13 @@ def alarm_callback(
 
 TOOL_DEFINITIONS = [
 
+    # -----------------------------------------------------
+    # WEB
+    # -----------------------------------------------------
+
     {
         "name": "open_website",
-        "description": "Open a website in the browser.",
+        "description": "Open a website or URL.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -462,8 +517,40 @@ TOOL_DEFINITIONS = [
     },
 
     {
+        "name": "search_web",
+        "description": "Open a Google browser search for a query.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+
+    # -----------------------------------------------------
+    # APPLICATIONS
+    # -----------------------------------------------------
+
+    {
         "name": "open_application",
-        "description": "Open a Windows application.",
+        "description": "Open a supported Windows application.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "string"
+                }
+            },
+            "required": ["application"]
+        }
+    },
+
+    {
+        "name": "close_application",
+        "description": "Close a supported Windows application.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -486,7 +573,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "open_folder",
-        "description": "Open a Windows folder.",
+        "description": "Open a supported Windows folder.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -497,6 +584,10 @@ TOOL_DEFINITIONS = [
             "required": ["folder"]
         }
     },
+
+    # -----------------------------------------------------
+    # TIME
+    # -----------------------------------------------------
 
     {
         "name": "get_time",
@@ -516,6 +607,10 @@ TOOL_DEFINITIONS = [
         }
     },
 
+    # -----------------------------------------------------
+    # CALCULATION
+    # -----------------------------------------------------
+
     {
         "name": "calculate",
         "description": "Calculate a mathematical expression.",
@@ -530,6 +625,10 @@ TOOL_DEFINITIONS = [
         }
     },
 
+    # -----------------------------------------------------
+    # WEATHER
+    # -----------------------------------------------------
+
     {
         "name": "get_weather",
         "description": "Get current weather for a location.",
@@ -543,6 +642,10 @@ TOOL_DEFINITIONS = [
             "required": ["location"]
         }
     },
+
+    # -----------------------------------------------------
+    # SYSTEM
+    # -----------------------------------------------------
 
     {
         "name": "take_screenshot",
@@ -564,12 +667,16 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "get_battery_status",
-        "description": "Get battery status.",
+        "description": "Get battery information.",
         "parameters": {
             "type": "object",
             "properties": {}
         }
     },
+
+    # -----------------------------------------------------
+    # VOLUME
+    # -----------------------------------------------------
 
     {
         "name": "volume_up",
@@ -591,25 +698,78 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "mute_volume",
-        "description": "Mute Windows volume.",
+        "description": "Toggle Windows mute.",
         "parameters": {
             "type": "object",
             "properties": {}
         }
     },
+
+    {
+        "name": "set_volume_level",
+        "description": "Set Windows volume toward a percentage from 0 to 100.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "level": {
+                    "type": "integer"
+                }
+            },
+            "required": ["level"]
+        }
+    },
+
+    # -----------------------------------------------------
+    # MEDIA
+    # -----------------------------------------------------
+
+    {
+        "name": "media_play_pause",
+        "description": "Play or pause media.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    {
+        "name": "media_next",
+        "description": "Skip to the next media track.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    {
+        "name": "media_previous",
+        "description": "Go to the previous media track.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    # -----------------------------------------------------
+    # WINDOWS
+    # -----------------------------------------------------
 
     {
         "name": "lock_windows",
-        "description": "Lock Windows.",
+        "description": "Lock the Windows computer.",
         "parameters": {
             "type": "object",
             "properties": {}
         }
     },
 
+    # -----------------------------------------------------
+    # FILES
+    # -----------------------------------------------------
+
     {
         "name": "search_files",
-        "description": "Search for files on the user's computer.",
+        "description": "Search for files by filename.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -637,7 +797,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "read_text_file",
-        "description": "Read a supported text file.",
+        "description": "Read a TXT, MD, CSV or LOG file.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -649,13 +809,40 @@ TOOL_DEFINITIONS = [
         }
     },
 
-    # =====================================================
+    # -----------------------------------------------------
+    # CLIPBOARD
+    # -----------------------------------------------------
+
+    {
+        "name": "get_clipboard",
+        "description": "Read the current clipboard contents.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+
+    {
+        "name": "set_clipboard",
+        "description": "Put text into the clipboard.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            },
+            "required": ["text"]
+        }
+    },
+
+    # -----------------------------------------------------
     # REMINDERS
-    # =====================================================
+    # -----------------------------------------------------
 
     {
         "name": "create_reminder",
-        "description": "Create a reminder for a specific date and time. Use YYYY-MM-DD HH:MM.",
+        "description": "Create a reminder for YYYY-MM-DD HH:MM.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -684,7 +871,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "cancel_reminder",
-        "description": "Cancel a reminder using its ID.",
+        "description": "Cancel a reminder by ID.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -696,13 +883,13 @@ TOOL_DEFINITIONS = [
         }
     },
 
-    # =====================================================
+    # -----------------------------------------------------
     # TIMERS
-    # =====================================================
+    # -----------------------------------------------------
 
     {
         "name": "create_timer",
-        "description": "Start a countdown timer in seconds.",
+        "description": "Create a countdown timer in seconds.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -722,7 +909,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "list_timers",
-        "description": "List active countdown timers.",
+        "description": "List active timers.",
         "parameters": {
             "type": "object",
             "properties": {}
@@ -731,7 +918,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "cancel_timer",
-        "description": "Cancel a countdown timer using its ID.",
+        "description": "Cancel a timer by ID.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -743,13 +930,13 @@ TOOL_DEFINITIONS = [
         }
     },
 
-    # =====================================================
+    # -----------------------------------------------------
     # ALARMS
-    # =====================================================
+    # -----------------------------------------------------
 
     {
         "name": "create_alarm",
-        "description": "Create a daily repeating alarm using HH:MM 24-hour format.",
+        "description": "Create a daily alarm using HH:MM.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -778,7 +965,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "cancel_alarm",
-        "description": "Cancel a daily alarm using its ID.",
+        "description": "Cancel an alarm by ID.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -790,13 +977,13 @@ TOOL_DEFINITIONS = [
         }
     },
 
-    # =====================================================
+    # -----------------------------------------------------
     # MEMORY
-    # =====================================================
+    # -----------------------------------------------------
 
     {
         "name": "remember_fact",
-        "description": "Remember a fact explicitly provided by the user.",
+        "description": "Remember an explicit user fact.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -837,9 +1024,9 @@ TOOL_DEFINITIONS = [
         }
     },
 
-    # =====================================================
-    # CONVERSATION
-    # =====================================================
+    # -----------------------------------------------------
+    # HISTORY
+    # -----------------------------------------------------
 
     {
         "name": "get_recent_history",
@@ -856,20 +1043,20 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "clear_history",
-        "description": "Clear stored conversation history.",
+        "description": "Clear persistent conversation history.",
         "parameters": {
             "type": "object",
             "properties": {}
         }
     },
 
-    # =====================================================
+    # -----------------------------------------------------
     # PREFERENCES
-    # =====================================================
+    # -----------------------------------------------------
 
     {
         "name": "set_preference",
-        "description": "Set a user preference.",
+        "description": "Set a persistent user preference.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -889,7 +1076,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "get_preference",
-        "description": "Get one user preference.",
+        "description": "Get a user preference.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -912,7 +1099,7 @@ TOOL_DEFINITIONS = [
 
     {
         "name": "reset_preferences",
-        "description": "Reset preferences to defaults.",
+        "description": "Reset user preferences.",
         "parameters": {
             "type": "object",
             "properties": {}
@@ -922,7 +1109,7 @@ TOOL_DEFINITIONS = [
 
 
 # =========================================================
-# GEMINI TOOLS
+# GEMINI TOOL LIST
 # =========================================================
 
 tools = [
@@ -956,17 +1143,41 @@ def execute_tool(
 
         if tool_name == "open_website":
 
-            return open_website(
+            result = open_website(
                 arguments.get("website")
+            )
+
+            return result
+
+        if tool_name == "search_web":
+
+            return search_web(
+                arguments.get("query")
             )
 
         if tool_name == "open_application":
 
-            return open_application(
+            result = open_application(
+                arguments.get("application")
+            )
+
+            session.set_application(
+                arguments.get("application")
+            )
+
+            return result
+
+        if tool_name == "close_application":
+
+            return close_application(
                 arguments.get("application")
             )
 
         if tool_name == "open_vscode":
+
+            session.set_application(
+                "Visual Studio Code"
+            )
 
             return open_vscode()
 
@@ -992,8 +1203,16 @@ def execute_tool(
 
         if tool_name == "get_weather":
 
+            location = arguments.get(
+                "location"
+            )
+
+            session.set_location(
+                location
+            )
+
             return get_weather(
-                arguments.get("location")
+                location
             )
 
         if tool_name == "take_screenshot":
@@ -1020,6 +1239,24 @@ def execute_tool(
 
             return mute_volume()
 
+        if tool_name == "set_volume_level":
+
+            return set_volume_level(
+                arguments.get("level")
+            )
+
+        if tool_name == "media_play_pause":
+
+            return media_play_pause()
+
+        if tool_name == "media_next":
+
+            return media_next()
+
+        if tool_name == "media_previous":
+
+            return media_previous()
+
         if tool_name == "lock_windows":
 
             return lock_windows()
@@ -1038,8 +1275,26 @@ def execute_tool(
 
         if tool_name == "read_text_file":
 
+            filepath = arguments.get(
+                "filepath"
+            )
+
+            session.set_file(
+                filepath
+            )
+
             return read_text_file(
-                arguments.get("filepath")
+                filepath
+            )
+
+        if tool_name == "get_clipboard":
+
+            return get_clipboard()
+
+        if tool_name == "set_clipboard":
+
+            return set_clipboard(
+                arguments.get("text")
             )
 
         # -------------------------------------------------
@@ -1127,14 +1382,14 @@ def execute_tool(
             return get_memory()
 
         # -------------------------------------------------
-        # CONVERSATION
+        # HISTORY
         # -------------------------------------------------
 
         if tool_name == "get_recent_history":
 
             count = arguments.get(
                 "count",
-                10
+                8
             )
 
             return get_recent_history(
@@ -1143,7 +1398,14 @@ def execute_tool(
 
         if tool_name == "clear_history":
 
-            return clear_history()
+            clear_history()
+
+            session.clear()
+
+            return (
+                "Conversation history and "
+                "session context have been cleared."
+            )
 
         # -------------------------------------------------
         # PREFERENCES
@@ -1158,11 +1420,11 @@ def execute_tool(
 
         if tool_name == "get_preference":
 
-            return str(
-                get_preference(
-                    arguments.get("key")
-                )
+            value = get_preference(
+                arguments.get("key")
             )
+
+            return str(value)
 
         if tool_name == "get_all_preferences":
 
@@ -1179,31 +1441,47 @@ def execute_tool(
     except Exception as error:
 
         print(
-            f"Tool error [{tool_name}]: {error}"
+            f"[TOOL ERROR] {tool_name}: {error}"
         )
 
         return (
-            f"The tool '{tool_name}' failed: "
-            f"{error}"
+            f"The tool '{tool_name}' failed. "
+            f"Reason: {error}"
         )
 
 
 # =========================================================
-# ASK GEMINI
+# GEMINI
 # =========================================================
 
 def ask_ai(user_message):
 
     global previous_interaction_id
 
-    recent_context = get_recent_history(8)
+    persistent_history = get_recent_history(
+        8
+    )
+
+    active_context = session.get_context()
+
+    recent_messages = session.get_recent_messages(
+        6
+    )
 
     enhanced_message = f"""
-Recent conversation context:
+ACTIVE SESSION CONTEXT:
 
-{recent_context}
+{active_context}
 
-Current user request:
+RECENT SESSION:
+
+{recent_messages}
+
+PERSISTENT CONVERSATION HISTORY:
+
+{persistent_history}
+
+CURRENT USER REQUEST:
 
 {user_message}
 """
@@ -1222,13 +1500,15 @@ Current user request:
 
             previous_interaction_id=(
                 previous_interaction_id
-            ) if previous_interaction_id else None
+                if previous_interaction_id
+                else None
+            )
         )
 
     except Exception as error:
 
         print(
-            f"Gemini request error: {error}"
+            f"[GEMINI ERROR] {error}"
         )
 
         return (
@@ -1260,18 +1540,24 @@ Current user request:
         except Exception as error:
 
             print(
-                f"Output processing error: {error}"
+                f"[OUTPUT ERROR] {error}"
             )
 
         if not function_calls:
 
             try:
 
-                return (
+                response = (
                     interaction.output_text
                     or
                     "I'm ready."
                 )
+
+                session.add_assistant_message(
+                    response
+                )
+
+                return response
 
             except Exception:
 
@@ -1290,11 +1576,11 @@ Current user request:
             )
 
             print(
-                f"\n[Tool] {tool_name}"
+                f"\n[TOOL] {tool_name}"
             )
 
             print(
-                f"[Arguments] {arguments}"
+                f"[ARGUMENTS] {arguments}"
             )
 
             result = execute_tool(
@@ -1302,8 +1588,13 @@ Current user request:
                 arguments
             )
 
+            session.set_tool_result(
+                tool_name,
+                result
+            )
+
             print(
-                f"[Result] {result}"
+                f"[RESULT] {result}"
             )
 
             function_results.append(
@@ -1334,48 +1625,13 @@ Current user request:
         except Exception as error:
 
             print(
-                f"Gemini continuation error: {error}"
+                f"[GEMINI CONTINUATION ERROR] {error}"
             )
 
             return (
-                "The action was attempted, "
-                "but I couldn't complete the response."
+                "The requested action was attempted, "
+                "but I couldn't finish processing it."
             )
-
-
-# =========================================================
-# COMMAND CLASSIFICATION
-# =========================================================
-
-def is_exit_command(command):
-
-    command = command.lower().strip()
-
-    exit_commands = [
-        "exit",
-        "quit",
-        "goodbye",
-        "shut down",
-        "shutdown",
-        "stop leo"
-    ]
-
-    return command in exit_commands
-
-
-def is_stop_command(command):
-
-    command = command.lower().strip()
-
-    stop_commands = [
-        "stop",
-        "stop speaking",
-        "be quiet",
-        "quiet",
-        "cancel speech"
-    ]
-
-    return command in stop_commands
 
 
 # =========================================================
@@ -1384,20 +1640,35 @@ def is_stop_command(command):
 
 def startup():
 
-    print("=" * 60)
-
+    print()
+    print("=" * 65)
     print(
-        "LEO 1.4 — Natural Voice + Agent Intelligence"
+        "LEO 1.5 - Advanced Desktop Control + Smart Context"
     )
-
-    print("=" * 60)
+    print("=" * 65)
 
     print(
         "Gemini: Connected"
     )
 
     print(
-        "Voice: Ready"
+        "Voice recognition: Enabled"
+    )
+
+    print(
+        "Desktop control: Enabled"
+    )
+
+    print(
+        "Application control: Enabled"
+    )
+
+    print(
+        "Clipboard: Enabled"
+    )
+
+    print(
+        "Media control: Enabled"
     )
 
     print(
@@ -1417,14 +1688,19 @@ def startup():
     )
 
     print(
-        "Conversation history: Enabled"
+        "Smart session context: Enabled"
+    )
+
+    print(
+        "Persistent history: Enabled"
     )
 
     print(
         "Preferences: Enabled"
     )
 
-    print("=" * 60)
+    print("=" * 65)
+    print()
 
 
 # =========================================================
@@ -1432,8 +1708,6 @@ def startup():
 # =========================================================
 
 def main():
-
-    global conversation_active
 
     startup()
 
@@ -1461,26 +1735,19 @@ def main():
 
     try:
 
-        while conversation_active:
+        while True:
 
-            # ---------------------------------------------
-            # LISTEN
-            # ---------------------------------------------
-
-            command = listen(
-                timeout=10,
-                phrase_time_limit=15
-            )
+            command = listen()
 
             if not command:
 
                 continue
 
-            normalized = normalize_command(
+            command = normalize_command(
                 command
             )
 
-            if not normalized:
+            if not command:
 
                 continue
 
@@ -1488,7 +1755,9 @@ def main():
             # EXIT
             # ---------------------------------------------
 
-            if is_exit_command(normalized):
+            if is_exit_command(
+                command
+            ):
 
                 speak(
                     "Goodbye."
@@ -1497,38 +1766,44 @@ def main():
                 break
 
             # ---------------------------------------------
-            # STOP SPEECH
+            # CLEAR CURRENT CONTEXT
             # ---------------------------------------------
 
-            if is_stop_command(normalized):
+            if is_clear_context_command(
+                command
+            ):
 
-                engine.stop()
+                session.clear()
 
                 speak(
-                    "Okay."
+                    "Current session context cleared."
                 )
 
                 continue
 
             # ---------------------------------------------
-            # STORE USER MESSAGE
+            # SAVE USER MESSAGE
             # ---------------------------------------------
+
+            session.add_user_message(
+                command
+            )
 
             add_message(
                 "user",
-                normalized
+                command
             )
 
             # ---------------------------------------------
-            # GEMINI
+            # ASK GEMINI
             # ---------------------------------------------
 
             response = ask_ai(
-                normalized
+                command
             )
 
             # ---------------------------------------------
-            # STORE RESPONSE
+            # PERSIST RESPONSE
             # ---------------------------------------------
 
             add_message(
@@ -1547,7 +1822,7 @@ def main():
     except KeyboardInterrupt:
 
         print(
-            "\nLEO stopped by user."
+            "\nLEO stopped by keyboard."
         )
 
     except Exception as error:
@@ -1557,8 +1832,6 @@ def main():
         )
 
     finally:
-
-        conversation_active = False
 
         reminder_monitor.stop()
 
