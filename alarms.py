@@ -7,7 +7,302 @@ from datetime import datetime
 
 
 ALARMS_FILE = "alarms.json"
+# =========================================================
+# LEO - Daily Alarm System
+# =========================================================
 
+import json
+import threading
+import time
+import uuid
+
+from datetime import datetime
+from pathlib import Path
+
+
+ALARMS_FILE = Path("alarms.json")
+
+
+# =========================================================
+# STORAGE
+# =========================================================
+
+def load_alarms():
+
+    if not ALARMS_FILE.exists():
+
+        return []
+
+    try:
+
+        with open(
+            ALARMS_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(file)
+
+    except Exception:
+
+        return []
+
+
+def save_alarms(alarms):
+
+    with open(
+        ALARMS_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            alarms,
+            file,
+            indent=4
+        )
+
+
+# =========================================================
+# CREATE
+# =========================================================
+
+def create_alarm(
+    alarm_time,
+    message="Alarm."
+):
+
+    if not alarm_time:
+
+        return "No alarm time was provided."
+
+    try:
+
+        parsed = datetime.strptime(
+            alarm_time,
+            "%H:%M"
+        )
+
+    except ValueError:
+
+        return (
+            "Alarm time must use HH:MM format."
+        )
+
+    alarm_id = str(uuid.uuid4())[:8]
+
+    alarm = {
+        "id": alarm_id,
+        "time": parsed.strftime("%H:%M"),
+        "message": message or "Alarm.",
+        "active": True,
+        "last_triggered_date": None
+    }
+
+    alarms = load_alarms()
+
+    alarms.append(alarm)
+
+    save_alarms(alarms)
+
+    return (
+        f"Daily alarm {alarm_id} set for "
+        f"{alarm['time']}."
+    )
+
+
+# =========================================================
+# LIST
+# =========================================================
+
+def list_alarms():
+
+    alarms = load_alarms()
+
+    active = [
+        alarm
+        for alarm in alarms
+        if alarm.get("active", True)
+    ]
+
+    if not active:
+
+        return "There are no active alarms."
+
+    lines = []
+
+    for alarm in active:
+
+        lines.append(
+            f"ID {alarm['id']}: "
+            f"{alarm['time']} - "
+            f"{alarm['message']}"
+        )
+
+    return "\n".join(lines)
+
+
+# =========================================================
+# CANCEL
+# =========================================================
+
+def cancel_alarm(alarm_id):
+
+    if not alarm_id:
+
+        return "No alarm ID was provided."
+
+    alarms = load_alarms()
+
+    found = False
+
+    for alarm in alarms:
+
+        if alarm["id"] == alarm_id:
+
+            alarm["active"] = False
+
+            found = True
+
+            break
+
+    if not found:
+
+        return (
+            f"Alarm {alarm_id} was not found."
+        )
+
+    save_alarms(alarms)
+
+    return (
+        f"Alarm {alarm_id} has been cancelled."
+    )
+
+
+# =========================================================
+# DUE ALARMS
+# =========================================================
+
+def get_due_alarms():
+
+    alarms = load_alarms()
+
+    now = datetime.now()
+
+    current_time = now.strftime(
+        "%H:%M"
+    )
+
+    today = now.strftime(
+        "%Y-%m-%d"
+    )
+
+    due = []
+
+    changed = False
+
+    for alarm in alarms:
+
+        if not alarm.get("active", True):
+
+            continue
+
+        if alarm["time"] != current_time:
+
+            continue
+
+        if alarm.get(
+            "last_triggered_date"
+        ) == today:
+
+            continue
+
+        alarm[
+            "last_triggered_date"
+        ] = today
+
+        due.append(alarm)
+
+        changed = True
+
+    if changed:
+
+        save_alarms(alarms)
+
+    return due
+
+
+# =========================================================
+# MONITOR
+# =========================================================
+
+class AlarmMonitor:
+
+    def __init__(
+        self,
+        callback,
+        interval=5
+    ):
+
+        self.callback = callback
+
+        self.interval = interval
+
+        self.running = False
+
+        self.thread = None
+
+    def start(self):
+
+        if self.running:
+
+            return
+
+        self.running = True
+
+        self.thread = threading.Thread(
+            target=self._run,
+            daemon=True
+        )
+
+        self.thread.start()
+
+    def _run(self):
+
+        while self.running:
+
+            try:
+
+                due = get_due_alarms()
+
+                for alarm in due:
+
+                    try:
+
+                        self.callback(
+                            alarm["id"],
+                            alarm["message"]
+                        )
+
+                    except Exception as error:
+
+                        print(
+                            f"Alarm callback error: {error}"
+                        )
+
+            except Exception as error:
+
+                print(
+                    f"Alarm monitor error: {error}"
+                )
+
+            time.sleep(
+                self.interval
+            )
+
+    def stop(self):
+
+        self.running = False
 
 def load_alarms():
     """Load alarms from JSON."""
